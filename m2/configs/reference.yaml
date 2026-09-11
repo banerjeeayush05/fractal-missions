@@ -1,0 +1,63 @@
+# M2 reference configuration: every field the loader accepts, with its source.
+# '???' = required and not supplied. Loading fails until it is set. Do not fill one in by guessing.
+# CFL_MAX, the Taylor protocol and all tolerances are code constants (m2/constants.py), not config.
+#
+# Two trees of real configs (decision B18):
+#   configs/cases/*  the coupon ladder; refuses to load until the etch rate is measured.
+#   configs/dev/*    a nominal rate marked provisional; may never certify a coupon-agreement check.
+
+case:
+  id: ???                   # case identifier, e.g. S03
+  phase: ???                # 1 = single material, 2 = SiGe marker layer
+  role: ???                 # calibrate | predict — a fit may only consume 'calibrate' (decision §2)
+  target_depth_nm: ???      # depth, never a final time: T = depth / rate is derived (decision B18)
+  cd_nm: ???                # null for an open-field blanket case
+  pitch_nm: ???             # null for an open-field blanket case
+  etch_time_fractions: [0.333333, 0.666667, 1.0]
+
+dimension: ???              # 2 or 3 (§5.1). Decision §9: 2D first.
+grid:
+  shape: ???                # (nz, nx) or (nz, ny, nx); axis 0 vertical, increasing toward the plasma
+  spacing_nm: ???
+  periodic: ???             # §5.1: [false, true] / [false, true, true]
+
+time:
+  cfl_target: 0.4           # decision §2. Must not exceed CFL_MAX.
+  n_steps: null             # derived: ceil(target_depth_nm / (cfl_target * spacing_nm)).
+                            # An explicit value below that minimum is rejected.
+
+seed: ???                   # run-level RNG seed, passed through VelocityRequest (contract v0.3)
+
+materials: ???              # list of {name, index, is_mask, is_void}; index 0..n-1;
+                            # exactly one void, so fractions sum to 1 everywhere (decision §10)
+
+velocity:
+  model: ???                # isotropic | directional (§5.5). R is an ETCH rate: R > 0 removes material.
+  params:                   # every parameter declares a REQUIRED scale, its typical magnitude (B20):
+                            # perturbations use max(|value|, scale), so a parameter near zero is
+                            # still probed. Mark `provisional: true` on any value that is a guess.
+    v_iso: {value: '???', scale: '???'}
+    v_dir: {value: '???', scale: '???'}   # directional model only
+    p:     {value: '???', scale: '???'}   # directional model only; must be > 1 (kink on vertical walls)
+
+bands:                      # two bands, not one (decision C10)
+  extension_cells: 8        # where a valid velocity must exist for the advection/reinit stencils
+  extension_taper_cells: 2  # weight tapers to zero over the outer cells of the extension band
+  evaluation_cells: 1.5     # where the velocity model is CALLED; thin, or M3 pays for the same
+                            # estimate several times. Sensitivity sweep: 1, 1.5, 2, 3 cells.
+  capacity: null            # K for the padded request; size it from the worst step, not the first,
+                            # or overflow fires at step 900 of 1000. Report peak occupancy per run.
+
+reinit:
+  n_iterations: 5           # §5.3 default. Fixed count. dtau = 0.5*dx is a code constant.
+  every: 5                  # §5.3 default.
+extension:
+  method: ???               # "pde" or "closest_point" (§5.4)
+  n_iterations: ???         # fixed count for "pde"; null for "closest_point"
+material_transition:
+  w_mat_cells: 2.0          # §5.6 default. Do not tune to pass a test (§11).
+numerics:
+  spatial_scheme: godunov   # §5.2; "weno5" behind this flag.
+  time_integrator: tvd_rk2  # §5.2; "tvd_rk3" behind this flag.
+  precision: float64        # §7.5. Anything else is rejected.
+  mms: false                # §8.2 V5. Verification-only; production loads refuse true.

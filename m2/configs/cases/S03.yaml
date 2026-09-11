@@ -1,0 +1,51 @@
+# Phase-1 coupon case S03 — AR 5.0 — the M2.4/M2.7 gate case
+# Decision §2 geometry; decision B18 config rules. Configs specify a target DEPTH, never a
+# final time: T = depth / rate is derived, and the level-set equation is invariant under
+# scaling rate by λ and time by 1/λ, so a rate correction breaks nothing. N = 625 is derived.
+# Vertical: 10-cell headroom + 2500 nm etch + 10-cell buffer = 270 cells at dx = 10 nm.
+# The rate is UNMEASURED: velocity values are '???' until S00 is etched (OPEN_QUESTIONS C11).
+# Use configs/dev/ for development runs.
+
+case:
+  id: S03
+  phase: 1
+  role: predict
+  target_depth_nm: 2500
+  cd_nm: 500
+  pitch_nm: 1000
+  etch_time_fractions: [0.333333, 0.666667, 1.0]
+
+dimension: 2
+grid:
+  shape: [270, 100]
+  spacing_nm: 10
+  periodic: [false, true]
+
+time:
+  cfl_target: 0.4                  # decision §2; N = ceil(depth / (cfl_target * dx)) = 625
+  n_steps: null
+
+seed: 0                            # any value is valid; recorded in the ledger (B23)
+
+materials:                         # void is an explicit material so fractions sum to 1 (decision §10)
+  - {name: void,    index: 0, is_mask: false, is_void: true}
+  - {name: silicon, index: 1, is_mask: false}
+# The 500 nm SiO2 mask is NOT modelled: infinitely selective, trench pre-cut into phi (decision §2).
+
+velocity:
+  model: directional               # R = v_iso + v_dir * max(0, n . z_hat)^p, an ETCH rate (decision §1)
+  params:                          # every parameter declares a scale (decision B20)
+    v_iso: {value: '???', scale: 0.58}
+    v_dir: {value: '???', scale: 5.25}
+    p: {value: '???', scale: 2}
+
+bands:                             # two bands, not one (decision C10)
+  extension_cells: 8               # velocity must be valid wherever advection/reinit stencils reach
+  extension_taper_cells: 2         # weight tapers to zero over the outer 2 cells
+  evaluation_cells: 1.5            # where M3 is actually called: thin, or the same estimate is bought twice
+  capacity: null                   # K sized from the evaluation band at the WORST step, not the first
+
+reinit: {n_iterations: 5, every: 5}
+extension: {method: closest_point, n_iterations: null}
+material_transition: {w_mat_cells: 2.0}
+numerics: {spatial_scheme: godunov, time_integrator: tvd_rk2, precision: float64, mms: false}

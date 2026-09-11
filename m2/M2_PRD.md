@@ -7,6 +7,9 @@
 **Path:** A (recipe solve) — critical path. Also required on Path B.
 **Status of this document:** authoritative. Where this PRD conflicts with a habit or a
 default, follow this PRD.
+**Amended 2026-09-11** by `decisions/2026-09-11-open-questions-response-r3.md` and
+`decisions/2026-09-11-second-round-response.md`, which are authoritative over this document where
+they differ. Amended passages cite the decision section.
 
 ---
 
@@ -88,6 +91,12 @@ A single feature with periodic lateral boundaries is small. A 1 µm deep trench 
 256 nm pitch at 2 nm resolution is 512 × 128 × 128 ≈ 8.4 × 10⁶ cells — **34 MB per field
 in fp32**. Dense is entirely affordable.
 
+**Amended (decision §2).** That figure is fp32, and §7.5 mandates fp64. The reference geometry is
+also no longer a 1 µm trench on a 256 nm pitch: it is coupon case S03 (CD 500 nm, pitch 1000 nm,
+depth 2500 nm at dx = 10 nm), which is 270 × 100 × 100 in 3D — **21.6 MB per fp64 field**. The
+dense decision therefore holds with a wide margin, and at AR 5 the sparsity question does not
+arise. See `reports/dense_cost_table.md`.
+
 **Decision: dense storage, masked compute, in JAX.** Narrow-band sparsity is a
 performance optimisation for larger domains and is explicitly deferred out of M2.
 
@@ -135,16 +144,40 @@ class Geometry:
     grid: Grid
 
 @dataclass(frozen=True)
-class VelocityRequest:            # what M2 hands to a velocity model
-    positions: Array              # interface-adjacent cell centres
-    normals: Array
-    material_fractions: Array
+class VelocityRequest:            # what M2 hands to a velocity model. Contract v0.3.
+    positions: Array              # closest-point projections onto the zero level set, (K, d)
+    normals: Array                # (K, d)
+    material_fractions: Array     # (K, n_materials)
+    weights: Array                # (K,) smooth band membership; exactly 0 for padding
+    cell_id: Array                # (K,) int: stable flattened grid index; seeds the RNG (A16)
+    n_active: Array               # scalar int: how many entries are real (B14)
     time: float
     step_index: int               # REQUIRED — see §7.6 on stochastic velocity
+    stage_index: int              # RK stage; draws are independent per stage by default
+    run_seed: int                 # run-level RNG seed
 
 # Velocity model signature. M2 ships analytic implementations only.
 VelocityModel = Callable[[VelocityRequest, PyTree], Array]   # -> speed in nm/s
 ```
+
+**The stable id and the smooth weight are two halves of one mechanism, not two safeguards
+(decision A16).** `cell_id` stops a cell's arrival in the band from shifting everyone else's random
+draws; the weight reaching zero at the band edge stops the arriving cell's own draw from entering
+discontinuously. Remove either and J is discontinuous in θ. `cell_id` is **opaque** to the velocity
+model: it seeds an RNG and never indexes geometry, or M3 acquires a dependency on M2's grid layout.
+Common random numbers **do not survive a change of grid spacing**, since ids mean different things
+at different dx — harmless in M2, a real constraint on M3's convergence studies.
+
+`weights` is zero for padding, but **zero weight does not protect against NaN**: `0 * NaN` is NaN
+and poisons the whole gradient, so padded entries carry a benign position and normals use the
+double-where guard regardless of weight (decision B14).
+
+`positions` is a **fixed-capacity padded set** of size K, derived by M2 from the *evaluation* band
+and the grid, sized from the **worst step, not the first** — the interface lengthens as the trench
+deepens, and overflow must not fire at step 900 of 1000. Peak occupancy is reported every run;
+overflow aborts like the CFL assertion. Membership is a smooth weight reaching exactly zero
+before the band edge, so a cell entering or leaving the band contributes nothing at the moment it
+does. Evaluating velocity on every cell was rejected: roughly 80× wasted M3 cost (decision §3).
 
 `PyTree` is the differentiable parameter set. **Every parameter M2 differentiates with
 respect to must live in that PyTree**, never captured in a closure — a captured value is
@@ -155,6 +188,13 @@ invisible to `jax.grad` and produces a silently zero gradient column.
 - φ signed distance, **negative inside solid**, positive in the open volume. Fix this
   convention in `constants.py` and assert it in tests; sign errors here are the single
   most common source of an inverted gradient.
+- **Etch sign and orientation (decision §1).** Velocity models return an **etch rate R** in nm/s:
+  positive removes material, negative deposits (legal, unused in M2). M2 advects φ_t − R|∇φ| = 0,
+  so the sign flip lives in one place in M2 rather than in every M3 and M5 velocity model. Axis 0
+  increases **toward the plasma**, so ẑ = +e₀ and R = v₀·max(0, n·ẑ)^p etches up-facing surfaces.
+  Both are recorded in `constants.py` and asserted. V14–V16 cannot catch a sign inversion, so the
+  forward check **V1a** — a trench floor recedes from the plasma, a downward-facing overhang does
+  not move — is the only guard.
 - Vertical extent covers initial stack plus the maximum expected etch depth plus a
   10-cell buffer.
 - Lateral boundaries **periodic**. Top and bottom **Neumann** (zero normal derivative).
@@ -163,7 +203,7 @@ invisible to `jax.grad` and produces a silently zero gradient column.
 
 ### 5.2 Time integration
 
-Advection of φ under normal speed V:  ∂φ/∂t + V |∇φ| = 0
+Advection of φ under etch rate R:  ∂φ/∂t − R |∇φ| = 0   (decision §1; R > 0 removes material)
 
 - Spatial: Godunov upwind Hamiltonian for |∇φ|. WENO5 is an option behind a flag but is
   **not** required for M2 — first-order upwind with adequate resolution is sufficient to
@@ -177,16 +217,24 @@ The natural scheme is `dt = CFL · dx / max|V|`, integrating to a fixed final ti
 changes **discontinuously** with parameters. The gradient through a discontinuous step
 count is wrong, and it is wrong in a way that looks like noise rather than like a bug.
 
-Instead: fix `N` from config, set `dt = T/N`, and **assert** that
-`CFL = max|V|·dt/dx ≤ 0.5` at every step. If the assertion fires, the run aborts and the
-user raises `N`. Fixed `N` also gives JAX a static computation graph, which the whole
-approach depends on.
+Instead: fix `N`, set `dt = T/N`, and **assert** that `CFL = max|R|·dt/dx ≤ 0.5` at every step.
+Fixed `N` also gives JAX a static computation graph, which the whole approach depends on.
+
+**Amended (decision §2).** Do not write bare step counts into configs or gates. Configs carry a
+target CFL of 0.4 and N is derived: `N = ceil(D / (CFL_target · dx))`, where D is the target etch
+depth. For the reference cases that is N ≥ 625 at dx = 10 nm and N ≥ 1250 at dx = 5 nm. An
+explicit `n_steps` below the derived minimum is rejected at load time.
+
+**Amended (decision D8).** The per-step CFL is returned as an auxiliary output of the scan and
+asserted on the host after the call, rather than with `checkify`, which avoids any question about
+how `checkify` composes with `grad`. The abort message names N.
 
 ### 5.3 Reinitialisation
 
 φ drifts away from a signed distance function under advection. Re-impose it by iterating
 the reinitialisation PDE  ∂φ/∂τ + sign(φ₀)(|∇φ| − 1) = 0  for a **fixed** number of
-iterations `n_reinit` (config, default 5), every `reinit_every` steps (default 5).
+iterations `n_reinit` (config, default 5), every `reinit_every` steps (default 5), with
+`dτ = 0.5·dx` fixed in `constants.py` (decision C2).
 
 - `sign(φ₀)` must be the **smoothed** sign, `φ₀ / sqrt(φ₀² + dx²)`. The exact sign
   function is non-differentiable at the interface and will corrupt the adjoint.
@@ -198,6 +246,23 @@ iterations `n_reinit` (config, default 5), every `reinit_every` steps (default 5
 
 ### 5.4 Velocity extension
 
+**Implemented at M2.1, not M2.2** (2026-09-11 scope decision): the closest-point gather and the
+request assembly it feeds are built alongside the first forward solve, so V1 and V2 — which have
+exact answers and run in seconds — are what first exercise the contract. A temporary
+evaluate-everywhere path would have been a second code path that M2.2 then deleted, never checked
+against an analytic result.
+
+**Two bands, not one (decision C10).** The *extension* band (default 8 cells, weight tapering to
+zero over the outer 2) is where a valid velocity must exist for the advection and reinitialisation
+stencils: the interface moves up to CFL·reinit_every ≈ 2 cells between reinitialisations,
+reinitialisation propagates about n_reinit = 5 cells, and the upwind stencil reaches 1 more. The
+*evaluation* band (default 1.5 cells) is where the velocity model is actually **called**, and it
+must be thin: cells deeper in the band project to nearly the same surface point, so calling M3 for
+them buys the same expensive Monte Carlo estimate several times. §5.4's closest-point gather is the
+bridge — M3 evaluates on the thin set, M2 gathers outward across the full band at negligible cost.
+The sensitivity study sweeps the **evaluation** band at 1, 1.5, 2 and 3 cells, since that is the one
+with a cost consequence; the extension band only needs a check that 8 cells is sufficient.
+
 Velocity is defined on the interface; advection needs it throughout the band. Extend by
 solving  ∂V/∂τ + sign(φ)(∇φ/|∇φ|)·∇V = 0  for a fixed iteration count, or by the simpler
 `closest-point` gather. Either is fine; both must be differentiable and use fixed counts.
@@ -205,7 +270,16 @@ solving  ∂V/∂τ + sign(φ)(∇φ/|∇φ|)·∇V = 0  for a fixed iteration c
 ### 5.5 The M3 velocity contract — freeze this early
 
 M2 must be usable by M3 without modification. Freeze the `VelocityModel` signature above
-by milestone M2.3 and version it. M3 will supply a **stochastic, expensive** velocity;
+by milestone M2.3 and version it.
+
+**Amended (decision §3).** The contract is at **v0.2** and stays `provisional`: it is being
+renegotiated with the M3 owner, and M2.3 must not freeze it before that sign-off lands. v0.2 adds
+`run_seed` and `stage_index`, makes `positions` closest-point projections in a fixed-capacity
+padded set, and adds `weights`. The RNG key is a deterministic function of
+`(run_seed, step_index, stage_index, point_index)` — never global, never stateful, never hashed
+from `time` — and draws are independent per RK stage by default. Whether `point_index` may be a
+row in the padded array, which shifts when band membership changes and would break common random
+numbers, is open: see OPEN_QUESTIONS A16 and CROSS_MISSION X3. M3 will supply a **stochastic, expensive** velocity;
 M2's design must not assume velocity is cheap or deterministic. Specifically:
 
 - Never call the velocity model more than once per RK stage.
@@ -228,7 +302,14 @@ at that boundary is then destroyed.
 **Mollify.** Material fraction transitions over a width `w_mat` (config, default 2 cells)
 using a smoothed Heaviside. Effective velocity is the fraction-weighted blend.
 
-**Required diagnostic:** report gradient sensitivity to `w_mat` at 1, 2, 4 and 8 cells.
+**Amended (decision §2, §10).** Mollified transitions are accepted; the `w_mat` study is the
+evidence that confirms or overturns that, so it is run honestly and reported whatever it shows.
+The physical reference case is the phase-2 SiGe marker layer (~30 nm, `provisional`, a config
+field not a constant) at dx = 2 nm, chosen because SiGe is conductive and so cannot introduce
+charging. M2.6 stays on the critical path and is not deferred.
+
+**Required diagnostic:** report gradient sensitivity to `w_mat` at 1, 2, 4 and 8 cells, **and**
+report `w_mat` as a fraction of the marker thickness.
 If the gradient depends strongly on a purely numerical smoothing width, that is a finding
 and must be reported, not tuned away. See open question **Q3**.
 
@@ -242,8 +323,17 @@ Outputs an engineer cares about: `depth`, `CD` at three heights, `sidewall_angle
   is zero almost everywhere. This was the same requirement in M1 and for the same reason.
 - Sidewall angle by least-squares fit to contour points in a specified depth window,
   not by finite-differencing two CD values.
-- **Also expose a smooth volumetric functional**, `etched_volume = ∫(1 − H(φ)) dV` with
-  mollified H. This is smooth by construction and is the diagnostic in §8.2.
+- **Also expose a smooth volumetric functional**, `solid_volume = ∫(1 − H(φ)) dV` with mollified
+  H, width fixed at `1.5·dx` in `constants.py` (decision A2: renamed, since with φ < 0 in solid
+  this integral is the remaining solid, not the volume etched; for its only job — the §8.7
+  diagnostic — the sign is irrelevant, as Taylor passes or fails identically on J and −J).
+  This is smooth by construction and is the diagnostic in **§8.7**.
+- **Amended (decision §2, C5, A11).** `CD` is reported at **fixed absolute heights** and sidewall
+  angle over a **fixed absolute depth window**, matching the metrology; a depth-relative window
+  changes the number of fit points discretely and produces a gradient artifact. Fixed-height CD
+  needs only 1D sub-cell zero crossings along grid rows and columns, which are static-shape and
+  JAX-native; full marching squares is not required, and scikit-image is the independent reference
+  for V13 only, never in the differentiated path.
 
 ---
 
@@ -252,13 +342,13 @@ Outputs an engineer cares about: `depth`, `CD` at three heights, `sidewall_angle
 | # | Milestone | Gate |
 |---|---|---|
 | **M2.0** | Repo scaffold, `CLAUDE.md`, schema, config, CI, **verification ledger** | `pytest` green; sign convention asserted; **V19** passes (the canary is caught); ledger writes rows |
-| **M2.1** | 2D forward: advection, fixed-N stepping, CFL assertion | **V1, V2, V20** |
-| **M2.2** | Reinitialisation + velocity extension | **V8, V9, V10, V11, V12** — V12 especially, see §8.3 |
-| **M2.3** | **Reverse-mode adjoint, 2D. Velocity contract frozen.** | **V14, V15, V16** on the smooth functional; adjoint ≤3× forward cost. V5–V7 convergence orders reported |
-| **M2.4** | Checkpointing + 3D | **V17, V18**; 3D **V14**; peak memory <8 GB at 512×128×128 with N=500; recompute overhead ≤2× |
+| **M2.1** | 2D forward: advection, fixed-N stepping, CFL assertion. **Plus the velocity-request assembly** — evaluation band, padded set with `weights`/`cell_id`/`n_active`, K sizing, closest-point projection and gather — moved here from §5.4/M2.2 by the 2026-09-11 scope decision, so the contract is first exercised by checks with closed-form answers | **V1, V1a, V2, V20** |
+| **M2.2** | Reinitialisation, and the PDE-based extension option (§5.4's closest-point gather landed at M2.1) | **V8, V9, V10, V11, V12** — V12 especially, see §8.3 |
+| **M2.3** | **Reverse-mode adjoint, 2D.** Contract v0.2 stays provisional until the M3 owner signs off (decision §3) | **V14, V15, V16** on the smooth functional; **V14a/V14b/V14c** analytic sensitivities; adjoint ≤3× forward in 2D unchecked; k measured and the M2.4 numbers proposed. V5–V7 convergence orders reported |
+| **M2.4** | Checkpointing + 3D | **V17, V18**; 3D **V14** on case S03; peak memory **<40 GB** on one H100; recompute overhead ≤2× with two-level checkpointing; adjoint ratio **≤4×** warm wall-clock (decision §7; the old 8 GB figure was fp32-sized and is withdrawn) |
 | **M2.5** | Differentiable extraction | **V13** including the sub-cell smoothness sweep; **V14** on `CD_mid` and `sidewall_angle`, not only the volumetric functional |
 | **M2.6** | Multi-material | Gradient survives an interface crossing a material boundary; `w_mat` sensitivity study reported |
-| **M2.7** | Performance + external verification | **V3, V4, V22**; full-resolution 3D **V14**; 3D 500 nm trench <60 s on one GPU; `verification.md` generated from the ledger |
+| **M2.7** | Performance + external verification | **V3, V22** (V4 on hold, decision §11); full-resolution 3D **V14**; case S03 in 3D <60 s **warm** on one H100, compile time reported separately; `verification.md` generated from the ledger |
 | **M2.8** | Inverse sanity | Recover a known synthetic parameter set from a synthetic profile with noise, to within the noise floor, from a cold start |
 
 ---
@@ -279,6 +369,31 @@ Sweep h over at least five decades, fit the slope, require 1.8 ≤ slope ≤ 2.2
 random δ. A first-order finite-difference check is **not sufficient** — it passes on
 gradients that are first-order right and second-order wrong.
 
+**Amended (decisions §4, B15/B21, B19, B20). The band is no longer a hard requirement:** a wrong
+gradient leaves the first-order term uncancelled, so its remainder goes as h and the slope tends to
+1. No incorrect gradient produces a slope above 2, so there is no upper bound to enforce. Scoring,
+in this order:
+
+    fewer than 3 points survive the noise floor -> FAIL, "insufficient signal"
+    slope < 1.8                                 -> FAIL
+    slope in [1.8, 2.2]                         -> PASS, logged "clean_quadratic"
+    slope > 2.2                                 -> PASS, logged "degenerate_direction"
+
+- The five-decade span is a condition on the `clean_quadratic` **classification**, not on pass or
+  fail: an O(h³) remainder reaches the floor sooner and can never span five decades.
+- The noise floor is `max(measured spread, C·√N·eps·max(|J|, 1))` with C = 10, estimated from
+  repeated evaluations of J at fixed θ. Roundoff accumulates over N steps as a random walk, and the
+  √N keeps the floor sensible when N changes between grid refinements.
+- The ledger records the classification **per direction** and the **degenerate fraction per run**.
+  If that fraction jumps between runs, something changed even though everything is green: treat it
+  as a finding.
+- Directions are drawn using **declared parameter scales**: δ_i ∝ max(|θ_i|, scale_i). Every
+  declared parameter carries a **required** `scale`, its typical magnitude, because a parameter
+  sitting at 1e-12 would otherwise get a 1e-12 perturbation, probing nothing while reporting a pass.
+  Scales are a property of the parameter, not a test-harness detail: M8 needs the same numbers.
+- Every δ must still pass individually. Keep linear functionals out of Taylor tests; V14a–V14c
+  cover them.
+
 ### 7.2 Test the test
 
 At M2.0, before any physics, add a test that injects a deliberately corrupted gradient
@@ -294,8 +409,11 @@ is the failure mode this catches.
 ### 7.4 Checkpointing
 
 Reverse mode over N steps naively stores N × domain. At N=500 and 34 MB that is 17 GB.
-Use recursive (binomial) checkpointing — `jax.checkpoint` on the step function, with
-√N checkpoints — giving ~750 MB and ~2× recompute. Griewank & Walther's `revolve` is the
+Use two-level checkpointing: a **nested scan** with √N outer segments, each checkpointed.
+`jax.checkpoint` on the step function alone does **not** do this — it still stores the carry at
+every one of the N steps, costing as much as the naive figure (decision §7). Both the 17 GB and
+~750 MB figures above are fp32; fp64 doubles them, and the reference case is now far smaller
+(`reports/dense_cost_table.md`). Griewank & Walther's `revolve` is the
 reference for the optimal schedule; JAX's `remat` policy is sufficient here.
 
 ### 7.5 Precision
@@ -312,8 +430,10 @@ recomputed forward differs from the original and **the adjoint is inconsistent w
 forward it claims to differentiate**. This does not crash. It produces a plausible, wrong
 gradient.
 
-Requirement: the RNG key must be a deterministic function of `step_index` and a run-level
-seed, both passed through `VelocityRequest`. Never use global or stateful RNG. Add a test
+Requirement: the RNG key must be a deterministic function of `run_seed`, `step_index`,
+`stage_index` and the stable `cell_id`, all carried in `VelocityRequest` (contract v0.3,
+decisions §3 and A16).
+Draws are independent per RK stage by default. Never hash it from `time`. Never use global or stateful RNG. Add a test
 at M2.4 that a checkpointed recompute reproduces the forward trajectory bitwise.
 
 ---
@@ -334,7 +454,7 @@ reality within a month.
 
 | Tier | When | Runtime budget | Checks |
 |---|---|---|---|
-| **Fast** | every commit, in CI | < 3 min, 2D only, coarse | V1, V2, V11, V12, V14 (reduced), V15, V16, V19, V20, V21 |
+| **Fast** | every commit, in CI | < 3 min, 2D only, coarse | V1, V1a, V2, V11, V12, V14 (reduced), V14a, V14b, V14c, V15, V16, V19, V20, V21 |
 | **Nightly** | scheduled, on main | < 60 min, 2D full + small 3D | V5, V6, V7, V8, V9, V10, V13, V17, V18 |
 | **Gate** | at the milestone that cites it | hours | V3, V4, V22, full-resolution 3D V14 |
 
@@ -345,19 +465,23 @@ verification suite nobody runs is worse than none because it produces false conf
 
 These have exact answers. Disagreement is unambiguous.
 
-- **V1 — Isotropic growth.** Circle (2D) / sphere (3D) under V = const. Radius must satisfy
-  r(t) = r₀ + Vt. Tolerance: relative error < 1% at 200 steps. Tests advection,
+- **V1 — Isotropic etch.** Circle (2D) / sphere (3D) under R = const. **Amended (decision §1,
+  confirmed 2026-09-11): a positive rate removes material, so a solid disk shrinks** and the radius
+  must satisfy r(t) = r₀ − R·t. The PRD's original growth form assumed the pre-decision sign
+  convention. Configuration in `reports/proposals.md` P5. Tolerance: relative error < 1% at 200 steps. Tests advection,
   reinitialisation and extension together, and is the cheapest signal that something broke.
 - **V2 — Plane translation.** Flat interface under constant V translates at exactly V with
   no distortion. Error < 0.1% — this one should be nearly exact, and if it is not the
   upwind scheme or the boundary condition is wrong.
-- **V3 — Collimated aperture limit.** Unity yield, perfectly collimated directional etch
-  (p → ∞) must reproduce the aperture shape: vertical sidewalls, no bow, no faceting.
-  Sidewall angle within 0.5° of 90°. This is the sanity limit an etch engineer will check
-  first.
-- **V4 — Facet angle.** A mask corner under V = v₀·max(0, n·ẑ)^p reaches a steady facet
-  angle set by p. Compare against the analytic steady angle. This is the test that catches
-  a wrong normal-vector convention, which V1 and V2 will both miss.
+- **V3 — Collimated aperture limit.** Perfectly collimated directional etch must reproduce the
+  aperture shape: vertical sidewalls, no bow, no faceting. Sidewall angle within 0.5° of 90°. This
+  is the sanity limit an etch engineer will check first. **p = 64** (finite, stated in the config;
+  decision §11), since p → ∞ is not representable.
+- **V4 — Facet angle. ON HOLD (decision §11).** Under a monotone cos^p law the vertical etch
+  rate peaks at normal incidence, while the classical facet-angle results assume a rate peaking
+  off-normal, which needs a yield curve — M5 physics. Do not spend time on V4 until someone
+  derives the steady angle under this law. **V14c** covers what V4 was really guarding: a wrong
+  normal-vector convention.
 
 ### 8.2 Forward verification — convergence order
 
@@ -406,9 +530,24 @@ These have no analytic solution but strong structural constraints.
   grid-sized jumps — a staircase here means extraction is not sub-cell and every gradient
   through it is garbage.
 
-### 8.5 Gradient verification — four independent checks
+### 8.5 Gradient verification
 
 One gradient test is not enough. These fail in different ways, which is the point.
+
+**Amended (decision §5).** JAX builds every reverse-mode derivative by linearising with the
+forward-mode JVP rules and transposing them, so `jvp` and `vjp` share those rules for **all**
+primitives, not only custom ones. V15 and V16 therefore verify **transpose consistency**, not
+derivative correctness — the "separate code paths" claim below is wrong. That leaves V14 as the
+only check here comparing a derivative against the function itself, so three analytic-sensitivity
+checks with closed-form answers join the fast tier:
+
+- **V14a** — V1 isotropic etch: `dr/dR = −T` (the radius shrinks as the rate rises).
+- **V14b** — V2 plane translation: `dz/dR = −T`, equivalently `d(depth)/dR = +T`. The magnitude is
+  T either way; the sign follows from §5.1, which is the point of the check.
+- **V14c** — a tilted plane under the directional law, moving along its normal at `v₀·cos^p(θ)`:
+  derivatives in `v₀` and `p` are exact. Also guards the §5.1 sign convention.
+
+IDs V23 and above belong to M3; never use them here.
 
 - **V14 — Taylor remainder.** §7.1. The primary gate.
 - **V15 — Forward mode versus reverse mode.** Compare `jax.jvp` against `jax.vjp` on the
@@ -422,8 +561,11 @@ One gradient test is not enough. These fail in different ways, which is the poin
 - **V17 — Checkpointed equals unchecked.** At small N where both fit in memory, the
   gradient with `jax.checkpoint` must equal the gradient without it to 1e-12. Catches
   checkpointing bugs, which otherwise present as a slightly wrong gradient at large N only.
-- **V18 — Checkpoint recompute is bitwise.** §7.6. The recomputed forward trajectory must
-  match the original bitwise. Guards the stochastic-velocity trap before M3 can spring it.
+- **V18 — Checkpoint recompute.** §7.6. **Restated (decision §8):** bitwise equality of a whole
+  trajectory is not something XLA guarantees, and it is not what M3 needs. Require the **RNG keys
+  and sampled values to be bitwise identical** on recompute, and the **trajectory to agree to 1e-12
+  relative**. CI enables deterministic GPU ops. Guards the stochastic-velocity trap before M3 can
+  spring it.
 - **V19 — Corrupted-gradient canary.** §7.2. Inject a 5% error into one gradient component
   and assert V14, V15 and V16 all **fail**. Runs in the fast tier. A verification suite
   that has never been shown to fail has not been verified.
@@ -501,13 +643,15 @@ a green M2 suite for a validated process model.
 ```bash
 uv init fractal-m2 && cd fractal-m2
 uv add "jax[cuda12]" numpy scipy matplotlib
-uv add scikit-image      # marching cubes/squares, sub-cell extraction
+uv add scikit-image      # V13 independent reference ONLY — not traceable by JAX, never in the
+                         # differentiated path (decision A11)
 uv add pyyaml omegaconf pytest hypothesis
 uv add pyvista           # VTK output for ViennaPS comparison
 ```
 
-Do **not** add: PyTorch, Warp, PETSc, ViennaPS (see §8.3), or any autodiff framework
-besides JAX. One autodiff system, so that a gradient bug has one place to be.
+Do **not** add: PyTorch, Warp, PETSc, ViennaPS (see §8.8), or any autodiff framework
+besides JAX. `scipy.optimize` (L-BFGS-B) is permitted **inside `tests/` only**, for M2.8; it must
+never be imported by the `m2` package, and a test asserts that (decision §12). One autodiff system, so that a gradient bug has one place to be.
 
 ---
 
@@ -518,8 +662,21 @@ besides JAX. One autodiff system, so that a gradient bug has one place to be.
   path — timestep count, reinitialisation iterations, extension iterations. All fixed.
 - **Do not apply `stop_gradient`** to reinitialisation, extension, or material blending
   to make something converge. If you believe a stop-gradient is needed, stop and ask.
-- **Do not use `jnp.sign`, `abs`, `maximum` on φ near the interface** without a mollified
-  form. Each is a place the derivative silently dies.
+- **No kinks or jumps in the differentiated path.** `jnp.sign`, `abs` and bare `maximum` on φ
+  near the interface are places the derivative silently dies. Squared one-sided differences are
+  allowed: the Godunov Hamiltonian is built from `max(x, 0)²`, which is C¹ (decision, §11 vs §5.2).
+- **Require p > 1 in the directional law.** `max(0, n·ẑ)^p` has its kink exactly on vertical
+  sidewalls, the most common surface in a trench. Use p ≥ 2 in gradient tests, and keep `0^p` out
+  of the p-derivative.
+- **Do not let a NaN reach the gradient through an untaken branch.** `∇φ/|∇φ|` blows up on the
+  medial axis; `jnp.where` alone does not save you. Use the double-where pattern. Masking after the
+  fact does not help either: `0 * NaN` is NaN, so a zero band weight will not save a NaN position.
+- **Do not `stop_gradient` the band weights.** They are part of the forward map and their
+  derivative is real. Something that looks like a mask is exactly what a future reader will wrap to
+  make a test pass (decision B14).
+- **Do not write a final time into a config.** Configs specify a target depth; T = depth / rate is
+  derived, so a later rate correction changes nothing and the V21 golden profile does not break
+  (decision B18).
 - **Do not extract CD by cell counting or thresholding.** Sub-cell only.
 - **Do not capture differentiable parameters in closures.**
 - **Do not start in fp32.**
@@ -541,8 +698,15 @@ besides JAX. One autodiff system, so that a gradient bug has one place to be.
 
 ## 12. Open questions for the human
 
-Answer before the milestone named. Do not guess; follow the M1 open-questions pattern and
-write them into `OPEN_QUESTIONS.md` with placeholders flagged `provisional: true`.
+**All seven were answered on 2026-09-11** in `decisions/2026-09-11-open-questions-response-r3.md`,
+which is authoritative: Q1/Q2 by the coupon ladder of decision §2 (periodic single feature,
+accepted); Q3/Q4 by decision §10 (mollified transitions accepted; two materials in two phases, and
+M2.6 stays on the critical path); Q5/Q7 by decision §9 (2D first, endpoint-only output); Q6 by
+decision §6 (Lambda H100 80GB SXM for gate runs, CPU for 2D development). The table below is kept
+for the reasoning it records.
+
+Answer before the milestone named. Do not guess; write open items into `OPEN_QUESTIONS.md` with
+placeholders flagged `provisional: true`.
 
 | # | Question | Blocks | Why it matters |
 |---|---|---|---|
@@ -558,11 +722,14 @@ write them into `OPEN_QUESTIONS.md` with placeholders flagged `provisional: true
 
 ## 13. Definition of done
 
-> A 3D trench evolves under a prescribed directional velocity in under 60 s on one GPU;
-> the Taylor-remainder test passes at second order on both a smooth functional and on
-> extracted CD and sidewall angle; the adjoint costs under 3× the forward pass; a
-> checkpointed recompute reproduces the forward trajectory bitwise; and a known synthetic
-> parameter set is recovered from a synthetic profile from a cold start.
+> Coupon case S03 evolves in 3D under a prescribed directional velocity in under 60 s **warm** on
+> one H100; the Taylor-remainder test passes at second order on both a smooth functional and on
+> extracted CD and sidewall angle, and the analytic sensitivities V14a–V14c agree with their
+> closed-form answers; the adjoint costs under **4×** the forward pass with two-level
+> checkpointing (under 3× in 2D unchecked); a checkpointed recompute reproduces the RNG stream
+> bitwise and the trajectory to 1e-12 relative; and a known synthetic parameter set is recovered
+> from a synthetic profile from a cold start, **with V14 asserted to pass at the recovered
+> parameters** (decision §12) — recovery alone is never evidence of gradient correctness.
 
 Plus: all 22 verification checks pass or carry a logged, explained discrepancy; the
 verification ledger is generated and current; and the velocity contract is frozen and

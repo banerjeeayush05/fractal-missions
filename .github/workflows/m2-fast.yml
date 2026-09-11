@@ -1,0 +1,28 @@
+# M2 fast tier (PRD §8.0): every commit, < 3 minutes of test time.
+# The nightly workflow is added with the first nightly check (M2.2); a scheduled job that runs
+# zero tests would report green on nothing (OPEN_QUESTIONS C9).
+name: m2-fast
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: m2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install (uv.lock must be current)
+        run: uv sync --locked
+      - name: Fast tier — hard 180 s budget (PRD §8.0, §11)
+        run: timeout 180 uv run pytest -m fast --ledger-of-record
+      - name: Upload verification ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-ledger
+          path: m2/reports/verification_ledger.json

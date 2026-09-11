@@ -1,0 +1,40 @@
+[project]
+name = "fractal-m2"
+version = "0.1.0"
+description = "M2 — Differentiable geometry core (dense level set, JAX, fp64)."
+requires-python = ">=3.11"
+# PRD §10. `jax[cuda12]` has Linux-only wheels, so the literal §10 line cannot install on
+# macOS; the CPU build is used elsewhere. OPEN_QUESTIONS B2 (provisional).
+# Do NOT add: PyTorch, Warp, PETSc, ViennaPS, or any autodiff framework besides JAX.
+dependencies = [
+    "hypothesis>=6.168.0",
+    "jax>=0.10.2 ; sys_platform != 'linux'",
+    "jax[cuda12]>=0.10.2 ; sys_platform == 'linux'",
+    "matplotlib>=3.11.2",
+    "numpy>=2.4.6",
+    "omegaconf>=2.3.1",
+    "pytest>=9.1.1",
+    "pyvista>=0.49.0",
+    "pyyaml>=6.0.3",
+    "scikit-image>=0.26.0",
+    "scipy>=1.17.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["m2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -p pytester -p m2.verification.pytest_plugin"
+# Tier markers are applied automatically from the check registry (m2/verification/registry.py);
+# they are declared here so --strict-markers accepts them.
+markers = [
+    "check(id): ties a test to a verification check ID (V1..V22); drives ledger rows and tier",
+    "fast: fast tier, every commit, <3 min total (PRD §8.0)",
+    "nightly: nightly tier (PRD §8.0)",
+    "gate: gate tier, run at the milestone that cites it (PRD §8.0)",
+]
