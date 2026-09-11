@@ -4,7 +4,8 @@
   "checks": {
     "V1": {
       "id": "V1",
-      "description": "Isotropic growth: r(t) = r0 + V t, rel. error < 1% at 200 steps",
+      "mission": "M2",
+      "description": "Isotropic etch: r(t) = r0 - R t (positive rate removes), rel. error < 1% at 200 steps",
       "section": "\u00a78.1",
       "cadence": [
         "fast"
@@ -12,6 +13,7 @@
       "milestones": [
         "M2.1"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -19,6 +21,7 @@
     },
     "V2": {
       "id": "V2",
+      "mission": "M2",
       "description": "Plane translation at exactly V, error < 0.1%",
       "section": "\u00a78.1",
       "cadence": [
@@ -27,6 +30,7 @@
       "milestones": [
         "M2.1"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -34,6 +38,7 @@
     },
     "V3": {
       "id": "V3",
+      "mission": "M2",
       "description": "Collimated aperture limit: sidewall within 0.5\u00b0 of 90\u00b0",
       "section": "\u00a78.1",
       "cadence": [
@@ -42,6 +47,7 @@
       "milestones": [
         "M2.7"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "gate": null
@@ -49,6 +55,7 @@
     },
     "V4": {
       "id": "V4",
+      "mission": "M2",
       "description": "ON HOLD (decision \u00a711): needs a steady facet angle derived for a monotone cos^p law",
       "section": "\u00a78.1",
       "cadence": [
@@ -57,6 +64,7 @@
       "milestones": [
         "M2.7"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "gate": null
@@ -64,6 +72,7 @@
     },
     "V5": {
       "id": "V5",
+      "mission": "M2",
       "description": "Method of manufactured solutions: observed order",
       "section": "\u00a78.2",
       "cadence": [
@@ -72,6 +81,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -79,6 +89,7 @@
     },
     "V6": {
       "id": "V6",
+      "mission": "M2",
       "description": "Spatial order (Godunov >= 0.9; WENO5 >= 4), L1 and Linf",
       "section": "\u00a78.2",
       "cadence": [
@@ -87,6 +98,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -94,6 +106,7 @@
     },
     "V7": {
       "id": "V7",
+      "mission": "M2",
       "description": "Temporal order (TVD-RK2 >= 1.9)",
       "section": "\u00a78.2",
       "cadence": [
@@ -102,6 +115,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -109,6 +123,7 @@
     },
     "V8": {
       "id": "V8",
+      "mission": "M2",
       "description": "Zalesak's disk: area preserved < 2%, notch survives",
       "section": "\u00a78.3",
       "cadence": [
@@ -117,6 +132,7 @@
       "milestones": [
         "M2.2"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -124,6 +140,7 @@
     },
     "V9": {
       "id": "V9",
+      "mission": "M2",
       "description": "Reversibility: symmetric-difference area < 3%",
       "section": "\u00a78.3",
       "cadence": [
@@ -132,6 +149,7 @@
       "milestones": [
         "M2.2"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -139,6 +157,7 @@
     },
     "V10": {
       "id": "V10",
+      "mission": "M2",
       "description": "Grid-orientation isotropy: (rmax - rmin)/rmean < 2%",
       "section": "\u00a78.3",
       "cadence": [
@@ -147,6 +166,7 @@
       "milestones": [
         "M2.2"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -154,6 +174,7 @@
     },
     "V11": {
       "id": "V11",
+      "mission": "M2",
       "description": "Reinit restores distance: max||grad phi| - 1| < 5% within 3 cells",
       "section": "\u00a78.3",
       "cadence": [
@@ -162,6 +183,7 @@
       "milestones": [
         "M2.2"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -169,6 +191,7 @@
     },
     "V12": {
       "id": "V12",
+      "mission": "M2",
       "description": "Reinit does not move the interface: drift < 0.1% per cycle",
       "section": "\u00a78.3",
       "cadence": [
@@ -177,6 +200,7 @@
       "milestones": [
         "M2.2"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -184,6 +208,7 @@
     },
     "V13": {
       "id": "V13",
+      "mission": "M2",
       "description": "Analytic trapezoid extraction: CD < 0.1 nm, SWA < 0.2\u00b0, sub-cell smooth",
       "section": "\u00a78.4",
       "cadence": [
@@ -192,6 +217,7 @@
       "milestones": [
         "M2.5"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -199,6 +225,7 @@
     },
     "V14": {
       "id": "V14",
+      "mission": "M2",
       "description": "Taylor remainder O(h^2): slope in [1.8, 2.2], >=5 decades, >=20 directions",
       "section": "\u00a78.5/\u00a77.1",
       "cadence": [
@@ -211,6 +238,7 @@
         "M2.5",
         "M2.7"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null,
@@ -219,6 +247,7 @@
     },
     "V15": {
       "id": "V15",
+      "mission": "M2",
       "description": "Forward (jvp) vs reverse (vjp) directional derivative, 1e-10 relative",
       "section": "\u00a78.5",
       "cadence": [
@@ -227,6 +256,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -234,6 +264,7 @@
     },
     "V16": {
       "id": "V16",
+      "mission": "M2",
       "description": "Dot-product test <w, J u> = <J^T w, u>",
       "section": "\u00a78.5",
       "cadence": [
@@ -242,6 +273,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -249,6 +281,7 @@
     },
     "V17": {
       "id": "V17",
+      "mission": "M2",
       "description": "Checkpointed gradient equals unchecked to 1e-12",
       "section": "\u00a78.5",
       "cadence": [
@@ -257,6 +290,7 @@
       "milestones": [
         "M2.4"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -264,6 +298,7 @@
     },
     "V18": {
       "id": "V18",
+      "mission": "M2",
       "description": "Checkpoint recompute: RNG keys/samples bitwise identical, trajectory to 1e-12 relative",
       "section": "\u00a78.5/\u00a77.6",
       "cadence": [
@@ -272,6 +307,7 @@
       "milestones": [
         "M2.4"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "nightly": null
@@ -279,6 +315,7 @@
     },
     "V19": {
       "id": "V19",
+      "mission": "M2",
       "description": "Corrupted-gradient canary: x1.05 on one component makes V14, V15, V16 fail",
       "section": "\u00a78.5/\u00a77.2",
       "cadence": [
@@ -287,13 +324,601 @@
       "milestones": [
         "M2.0"
       ],
-      "result": "not_implemented",
+      "claims_coupon_agreement": false,
+      "result": "pass",
       "runs": {
-        "fast": null
+        "fast": {
+          "result": "pass",
+          "last_run": "2026-09-11T23:50:54+00:00",
+          "git_sha": "579a82218192ed8c7474b377caffe43bfe90f081",
+          "git_dirty": false,
+          "measured": {
+            "test_control_passes_all_three": {
+              "V14": {
+                "passed": true,
+                "slopes": [
+                  2.0001,
+                  1.9999,
+                  2.0001,
+                  2.0001,
+                  1.9998,
+                  2.0,
+                  2.0,
+                  1.9999,
+                  2.0001,
+                  2.0002,
+                  2.0001,
+                  2.0005,
+                  1.9995,
+                  2.0003,
+                  2.0,
+                  1.9999,
+                  2.0001,
+                  1.9997,
+                  2.0005,
+                  2.0
+                ],
+                "classifications": [
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic",
+                  "clean_quadratic"
+                ],
+                "degenerate_fraction": 0.0,
+                "slope_min": 1.999456809142207,
+                "slope_max": 2.0005178810368207,
+                "n_directions": 20,
+                "h_range": [
+                  1.0000000000000002e-06,
+                  0.1
+                ],
+                "n_h": 11,
+                "noise_floor": 2.5709033846341358e-14,
+                "noise_spread": 0.0,
+                "n_steps": 1,
+                "points_kept_min": 11,
+                "J0": 11.578319525043842
+              },
+              "V15": {
+                "passed": true,
+                "max_rel_error": 9.633139431513611e-17,
+                "rtol": 1e-10,
+                "n": 20,
+                "n_failed": 0
+              },
+              "V16": {
+                "passed": true,
+                "max_rel_error": 2.377956196864361e-16,
+                "rtol": 1e-10,
+                "n": 20,
+                "n_failed": 0
+              }
+            },
+            "test_corrupted_component_is_caught[V14]": {
+              "components_caught": "5/5",
+              "results": {
+                "component_0": {
+                  "message": "\u03b40: slope 1.141 < 1.8 \u2014 first-order term present: gradient error; \u03b41: slope 1.036 < 1.8 \u2014 first-order term present: gradient error; \u03b42: slope 0.962 < 1.8 \u2014 first-order term present: gradient error; \u03b43: slope 0.952 < 1.8 \u2014 first-order term present: gradient error; \u03b44: slope 0.956 < 1.8 \u2014 first-order term present: gradient error \u2026",
+                  "slopes": [
+                    1.1412,
+                    1.0364,
+                    0.9623,
+                    0.9524,
+                    0.9556,
+                    1.1651,
+                    1.2163,
+                    1.1507,
+                    1.1241,
+                    0.962,
+                    1.0425,
+                    1.088,
+                    0.9813,
+                    0.9383,
+                    1.1001,
+                    1.1034,
+                    1.036,
+                    1.1756,
+                    1.0452,
+                    1.2701
+                  ],
+                  "classifications": [
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error"
+                  ],
+                  "degenerate_fraction": 0.0,
+                  "slope_min": 0.9382751092771331,
+                  "slope_max": 1.2701393546607402,
+                  "n_directions": 20,
+                  "h_range": [
+                    1.0000000000000002e-06,
+                    0.1
+                  ],
+                  "n_h": 11,
+                  "noise_floor": 2.5709033846341358e-14,
+                  "noise_spread": 0.0,
+                  "n_steps": 1,
+                  "points_kept_min": 11,
+                  "J0": 11.578319525043842
+                },
+                "component_1": {
+                  "message": "\u03b40: slope 1.059 < 1.8 \u2014 first-order term present: gradient error; \u03b41: slope 1.106 < 1.8 \u2014 first-order term present: gradient error; \u03b42: slope 1.076 < 1.8 \u2014 first-order term present: gradient error; \u03b43: slope 1.094 < 1.8 \u2014 first-order term present: gradient error; \u03b44: slope 0.962 < 1.8 \u2014 first-order term present: gradient error \u2026",
+                  "slopes": [
+                    1.0591,
+                    1.1058,
+                    1.0763,
+                    1.0944,
+                    0.9618,
+                    1.0895,
+                    1.087,
+                    0.9613,
+                    1.0748,
+                    1.0879,
+                    1.1226,
+                    0.9935,
+                    1.1907,
+                    1.0424,
+                    1.1566,
+                    0.9621,
+                    1.065,
+                    0.923,
+                    1.243,
+                    1.0743
+                  ],
+                  "classifications": [
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error"
+                  ],
+                  "degenerate_fraction": 0.0,
+                  "slope_min": 0.9230463707760046,
+                  "slope_max": 1.2429714430264647,
+                  "n_directions": 20,
+                  "h_range": [
+                    1.0000000000000002e-06,
+                    0.1
+                  ],
+                  "n_h": 11,
+                  "noise_floor": 2.5709033846341358e-14,
+                  "noise_spread": 0.0,
+                  "n_steps": 1,
+                  "points_kept_min": 11,
+                  "J0": 11.578319525043842
+                },
+                "component_2": {
+                  "message": "\u03b40: slope 1.139 < 1.8 \u2014 first-order term present: gradient error; \u03b41: slope 1.105 < 1.8 \u2014 first-order term present: gradient error; \u03b42: slope 1.140 < 1.8 \u2014 first-order term present: gradient error; \u03b43: slope 1.012 < 1.8 \u2014 first-order term present: gradient error; \u03b44: slope 1.054 < 1.8 \u2014 first-order term present: gradient error \u2026",
+                  "slopes": [
+                    1.139,
+                    1.1053,
+                    1.1398,
+                    1.0117,
+                    1.054,
+                    1.139,
+                    1.047,
+                    1.2972,
+                    1.2109,
+                    1.2231,
+                    0.9962,
+                    1.2493,
+                    1.1412,
+                    1.1731,
+                    1.0339,
+                    1.0455,
+                    1.1871,
+                    1.0965,
+                    1.2451,
+                    1.2542
+                  ],
+                  "classifications": [
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error"
+                  ],
+                  "degenerate_fraction": 0.0,
+                  "slope_min": 0.9962321519482193,
+                  "slope_max": 1.297185783882423,
+                  "n_directions": 20,
+                  "h_range": [
+                    1.0000000000000002e-06,
+                    0.1
+                  ],
+                  "n_h": 11,
+                  "noise_floor": 2.5709033846341358e-14,
+                  "noise_spread": 0.0,
+                  "n_steps": 1,
+                  "points_kept_min": 11,
+                  "J0": 11.578319525043842
+                },
+                "component_3": {
+                  "message": "\u03b40: slope 1.079 < 1.8 \u2014 first-order term present: gradient error; \u03b41: slope 0.918 < 1.8 \u2014 first-order term present: gradient error; \u03b42: slope 0.962 < 1.8 \u2014 first-order term present: gradient error; \u03b43: slope 0.962 < 1.8 \u2014 first-order term present: gradient error; \u03b44: slope 1.088 < 1.8 \u2014 first-order term present: gradient error \u2026",
+                  "slopes": [
+                    1.0788,
+                    0.9176,
+                    0.9621,
+                    0.9621,
+                    1.0883,
+                    0.9617,
+                    0.9614,
+                    1.067,
+                    0.9472,
+                    1.0743,
+                    1.0309,
+                    1.0477,
+                    1.0818,
+                    1.0698,
+                    0.9223,
+                    1.0727,
+                    1.0307,
+                    0.9616,
+                    1.1418,
+                    0.9587
+                  ],
+                  "classifications": [
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error"
+                  ],
+                  "degenerate_fraction": 0.0,
+                  "slope_min": 0.9176318847439415,
+                  "slope_max": 1.1418496323335154,
+                  "n_directions": 20,
+                  "h_range": [
+                    1.0000000000000002e-06,
+                    0.1
+                  ],
+                  "n_h": 11,
+                  "noise_floor": 2.5709033846341358e-14,
+                  "noise_spread": 0.0,
+                  "n_steps": 1,
+                  "points_kept_min": 11,
+                  "J0": 11.578319525043842
+                },
+                "component_4": {
+                  "message": "\u03b40: slope 1.102 < 1.8 \u2014 first-order term present: gradient error; \u03b41: slope 1.090 < 1.8 \u2014 first-order term present: gradient error; \u03b42: slope 1.019 < 1.8 \u2014 first-order term present: gradient error; \u03b43: slope 0.850 < 1.8 \u2014 first-order term present: gradient error; \u03b44: slope 0.962 < 1.8 \u2014 first-order term present: gradient error \u2026",
+                  "slopes": [
+                    1.1024,
+                    1.0903,
+                    1.0193,
+                    0.8496,
+                    0.9617,
+                    1.1126,
+                    0.9613,
+                    1.1026,
+                    1.0333,
+                    1.0199,
+                    0.9755,
+                    1.024,
+                    0.9417,
+                    1.0137,
+                    1.2257,
+                    0.9439,
+                    0.9474,
+                    1.0951,
+                    1.0325,
+                    1.0016
+                  ],
+                  "classifications": [
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error",
+                    "first_order_error"
+                  ],
+                  "degenerate_fraction": 0.0,
+                  "slope_min": 0.8495994359643253,
+                  "slope_max": 1.2256857932385181,
+                  "n_directions": 20,
+                  "h_range": [
+                    1.0000000000000002e-06,
+                    0.1
+                  ],
+                  "n_h": 11,
+                  "noise_floor": 2.5709033846341358e-14,
+                  "noise_spread": 0.0,
+                  "n_steps": 1,
+                  "points_kept_min": 11,
+                  "J0": 11.578319525043842
+                }
+              }
+            },
+            "test_corrupted_component_is_caught[V15]": {
+              "components_caught": "5/5",
+              "results": {
+                "component_0": {
+                  "message": "jvp vs claimed gradient: 20/20 directions exceed 1e-10 (max 1.25e-02)",
+                  "max_rel_error": 0.012520226554065596,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_1": {
+                  "message": "jvp vs claimed gradient: 20/20 directions exceed 1e-10 (max 1.07e-02)",
+                  "max_rel_error": 0.010746793133263642,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_2": {
+                  "message": "jvp vs claimed gradient: 20/20 directions exceed 1e-10 (max 4.20e-03)",
+                  "max_rel_error": 0.004197021996321227,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_3": {
+                  "message": "jvp vs claimed gradient: 20/20 directions exceed 1e-10 (max 2.11e-02)",
+                  "max_rel_error": 0.0211147456118378,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_4": {
+                  "message": "jvp vs claimed gradient: 20/20 directions exceed 1e-10 (max 2.71e-02)",
+                  "max_rel_error": 0.027118007995925085,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                }
+              }
+            },
+            "test_corrupted_component_is_caught[V16]": {
+              "components_caught": "5/5",
+              "results": {
+                "component_0": {
+                  "message": "<w, Ju> vs <J\u1d40w, u>: 20/20 directions exceed 1e-10 (max 1.49e-02)",
+                  "max_rel_error": 0.014924438650485851,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_1": {
+                  "message": "<w, Ju> vs <J\u1d40w, u>: 20/20 directions exceed 1e-10 (max 2.52e-02)",
+                  "max_rel_error": 0.025168562841438345,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_2": {
+                  "message": "<w, Ju> vs <J\u1d40w, u>: 20/20 directions exceed 1e-10 (max 2.25e-02)",
+                  "max_rel_error": 0.022451686001299122,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_3": {
+                  "message": "<w, Ju> vs <J\u1d40w, u>: 20/20 directions exceed 1e-10 (max 2.14e-02)",
+                  "max_rel_error": 0.021359528400873122,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                },
+                "component_4": {
+                  "message": "<w, Ju> vs <J\u1d40w, u>: 20/20 directions exceed 1e-10 (max 2.10e-02)",
+                  "max_rel_error": 0.02102841511881041,
+                  "rtol": 1e-10,
+                  "n": 20,
+                  "n_failed": 20
+                }
+              }
+            },
+            "test_canary_caught_overall": {
+              "corruption_factor": 1.05,
+              "n_components": 5,
+              "corrupted_detected": {
+                "component_0": {
+                  "V14": true,
+                  "V15": true,
+                  "V16": true
+                },
+                "component_1": {
+                  "V14": true,
+                  "V15": true,
+                  "V16": true
+                },
+                "component_2": {
+                  "V14": true,
+                  "V15": true,
+                  "V16": true
+                },
+                "component_3": {
+                  "V14": true,
+                  "V15": true,
+                  "V16": true
+                },
+                "component_4": {
+                  "V14": true,
+                  "V15": true,
+                  "V16": true
+                }
+              },
+              "corrupted_V14_slope_min": {
+                "component_0": 0.9382751092771331,
+                "component_1": 0.9230463707760046,
+                "component_2": 0.9962321519482193,
+                "component_3": 0.9176318847439415,
+                "component_4": 0.8495994359643253
+              },
+              "corrupted_V15_max_rel_error": {
+                "component_0": 0.012520226554065596,
+                "component_1": 0.010746793133263642,
+                "component_2": 0.004197021996321227,
+                "component_3": 0.0211147456118378,
+                "component_4": 0.027118007995925085
+              },
+              "corrupted_V16_max_rel_error": {
+                "component_0": 0.014924438650485851,
+                "component_1": 0.025168562841438345,
+                "component_2": 0.022451686001299122,
+                "component_3": 0.021359528400873122,
+                "component_4": 0.02102841511881041
+              },
+              "taylor_detection": {
+                "smallest_relative_error_caught": {
+                  "component_0": 1e-05,
+                  "component_1": 0.0001,
+                  "component_2": 0.0001,
+                  "component_3": 1e-05,
+                  "component_4": 1e-05
+                },
+                "eps_grid": [
+                  0.1,
+                  0.05,
+                  0.01,
+                  0.001,
+                  0.0001,
+                  1e-05,
+                  1e-06,
+                  1e-07
+                ]
+              }
+            },
+            "test_canary_refuses_undetectable_setup": {
+              "precondition_enforced": true
+            },
+            "test_degeneracy_is_not_a_hiding_place": {
+              "degenerate_control_slope": 2.999839201080971,
+              "corrupted_slope": 0.9905011553493281
+            },
+            "test_control_unmutated_v19_is_green_in_the_same_harness": {},
+            "test_v19_goes_red_under_mutant[taylor_always_passes]": {},
+            "test_v19_goes_red_under_mutant[v15_always_passes]": {},
+            "test_v19_goes_red_under_mutant[v16_always_passes]": {},
+            "test_v19_goes_red_under_mutant[harness_always_fails]": {},
+            "test_v19_goes_red_under_mutant[corruption_is_noop]": {},
+            "test_v19_goes_red_under_mutant[taylor_reports_garbage_slope_six]": {}
+          },
+          "tests": [
+            "tests/test_v19_canary.py::test_canary_caught_overall",
+            "tests/test_v19_canary.py::test_canary_refuses_undetectable_setup",
+            "tests/test_v19_canary.py::test_control_passes_all_three",
+            "tests/test_v19_canary.py::test_corrupted_component_is_caught[V14]",
+            "tests/test_v19_canary.py::test_corrupted_component_is_caught[V15]",
+            "tests/test_v19_canary.py::test_corrupted_component_is_caught[V16]",
+            "tests/test_v19_canary.py::test_degeneracy_is_not_a_hiding_place",
+            "tests/test_v19_mutants.py::test_control_unmutated_v19_is_green_in_the_same_harness",
+            "tests/test_v19_mutants.py::test_v19_goes_red_under_mutant[corruption_is_noop]",
+            "tests/test_v19_mutants.py::test_v19_goes_red_under_mutant[harness_always_fails]",
+            "tests/test_v19_mutants.py::test_v19_goes_red_under_mutant[taylor_always_passes]",
+            "tests/test_v19_mutants.py::test_v19_goes_red_under_mutant[taylor_reports_garbage_slope_six]",
+            "tests/test_v19_mutants.py::test_v19_goes_red_under_mutant[v15_always_passes]",
+            "tests/test_v19_mutants.py::test_v19_goes_red_under_mutant[v16_always_passes]"
+          ],
+          "detail": "",
+          "environment": {
+            "python": "3.13.5",
+            "platform": "macOS-26.3.1-arm64-arm-64bit-Mach-O",
+            "jax": "0.11.1",
+            "jaxlib": "0.11.1",
+            "backend": "cpu",
+            "device_kind": "cpu",
+            "device_count": 1,
+            "x64": true
+          }
+        }
       }
     },
     "V20": {
       "id": "V20",
+      "mission": "M2",
       "description": "CFL assertion fires with a clear message naming N",
       "section": "\u00a78.6",
       "cadence": [
@@ -302,6 +927,7 @@
       "milestones": [
         "M2.1"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -309,12 +935,14 @@
     },
     "V21": {
       "id": "V21",
+      "mission": "M2",
       "description": "Golden 2D profile reproduced to 1e-10",
       "section": "\u00a78.6",
       "cadence": [
         "fast"
       ],
       "milestones": [],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -322,6 +950,7 @@
     },
     "V22": {
       "id": "V22",
+      "mission": "M2",
       "description": "ViennaPS cross-code: symmetric Hausdorff < 2 nm (separate process)",
       "section": "\u00a78.8",
       "cadence": [
@@ -330,6 +959,7 @@
       "milestones": [
         "M2.7"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "gate": null
@@ -337,6 +967,7 @@
     },
     "V1a": {
       "id": "V1a",
+      "mission": "M2",
       "description": "Directional-law sign check: trench floor recedes from the plasma, overhang does not move",
       "section": "decision \u00a71",
       "cadence": [
@@ -345,6 +976,7 @@
       "milestones": [
         "M2.1"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -352,7 +984,8 @@
     },
     "V14a": {
       "id": "V14a",
-      "description": "Analytic sensitivity, isotropic growth: dr/dV = T",
+      "mission": "M2",
+      "description": "Analytic sensitivity, isotropic etch: dr/dR = -T",
       "section": "decision \u00a75",
       "cadence": [
         "fast"
@@ -360,6 +993,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -367,7 +1001,8 @@
     },
     "V14b": {
       "id": "V14b",
-      "description": "Analytic sensitivity, plane translation: dz/dV = T",
+      "mission": "M2",
+      "description": "Analytic sensitivity, plane translation: dz/dR = -T (depth: +T)",
       "section": "decision \u00a75",
       "cadence": [
         "fast"
@@ -375,6 +1010,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null
@@ -382,6 +1018,7 @@
     },
     "V14c": {
       "id": "V14c",
+      "mission": "M2",
       "description": "Analytic sensitivity, tilted plane under the directional law: exact d/dv0 and d/dp",
       "section": "decision \u00a75",
       "cadence": [
@@ -390,6 +1027,7 @@
       "milestones": [
         "M2.3"
       ],
+      "claims_coupon_agreement": false,
       "result": "not_implemented",
       "runs": {
         "fast": null

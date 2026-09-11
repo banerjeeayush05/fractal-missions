@@ -108,7 +108,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         return
     of_record = session.config.getoption("--ledger-of-record")
     path = Path(session.config.getoption("--ledger-path"))
-    if of_record:
+    if of_record:  # noqa: SIM102
         # Decision §13: only a clean checkout may write the ledger of record, so every published
         # row identifies exactly the code that produced it.
         if path == ledger.LOCAL_LEDGER_PATH:
@@ -118,6 +118,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             state["written"] = ("of record NOT written: the working tree is dirty; CI on a clean "
                                 "checkout is the only writer (decision §13)")
             return
+    state["path"] = path  # the resolved path, so the summary line names the file actually written
     written = []
     for (cid, tier), nodeids in sorted(state["collected"].items()):
         if any(n in state["deselected"] for n in nodeids):
@@ -139,5 +140,5 @@ def pytest_terminal_summary(terminalreporter, exitstatus: int, config: pytest.Co
     if isinstance(written, str):
         terminalreporter.write_line(f"verification ledger {written}")
     elif written:
-        terminalreporter.write_line(f"verification ledger rows written: {', '.join(written)} "
-                                    f"-> {config.getoption('--ledger-path')}")
+        path = config.stash[_KEY].get("path", config.getoption("--ledger-path"))
+        terminalreporter.write_line(f"verification ledger rows written: {', '.join(written)} -> {path}")
