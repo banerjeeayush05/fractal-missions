@@ -465,3 +465,52 @@ If the M3 conversation changes who sets K (item 3) or the `cell_id` convention (
 module that reworks — so it stays in one file behind one function, and the contract fingerprint test
 fails loudly if the contract shifts. A change to the evaluation band width (item 6) is only a config
 value. PRD §6 and §5.4 are amended to match.
+
+---
+
+## M2.1 findings
+
+**F1. Without reinitialisation, a band-limited velocity extension stalls the front.** Resolved for
+M2.1 by owner decision (option A, 2026-09-11); the cause is removed at M2.2.
+φ advances inside the extension band and not outside it, so the field distorts a little more each
+step. While the interface has travelled less than the band is wide, the distortion never reaches it
+and the scheme is exact. Past that point |∇φ| at the interface leaves 1 (measured 5.012), the
+closest-point projection stops landing on the surface, the gathered weight falls below the floor and
+the rate becomes exactly zero. Measured on plane translation, 200 steps, 150 nm of travel:
+
+| extension band | moved (expect 149.831 nm) | \|∇φ\| at interface |
+|---|---|---|
+| 8 cells = 80 nm | 71.133 | 5.012 |
+| 20 cells = 200 nm | 149.831 | 1.000 |
+| 64 cells = 640 nm | 149.831 | 1.000 |
+
+V1 and V2 therefore run at M2.1 with the protocol intact (200 steps, §8.1 tolerances) and the
+problem reduced (30 nm of travel, half the untapered band). Widening the band instead would be
+tuning a numerical parameter to make a check pass, which §11 forbids. Both limitation and mechanism
+are executable tests in `tests/test_forward_2d.py`, so the full-travel versions cannot be restored
+to the gate by accident.
+
+**F2. The reduced-form constraint scales with dx, which blocks grid refinement until M2.2.**
+The band is a fixed number of *cells*, so at dx = 2.5 nm it is only 20 nm wide. The same 30 nm
+travel then exceeds it and V1's error jumps from 8.6e-3 to 4.5e-2:
+
+| dx | V1 relative error |
+|---|---|
+| 10 nm | 8.6e-3 (passes, tolerance 1e-2) |
+| 5 nm | 2.0e-3 |
+| 2.5 nm | 4.5e-2 — travel exceeds the band, front stalls |
+
+Consequence: **V6 and V7 (convergence order, nightly, M2.3) cannot run before M2.2.** A refinement
+study on a scheme whose valid travel shrinks with dx measures the band limit, not the order.
+
+**F3. V1 passes at dx = 10 nm with only 16 % margin** (8.63e-3 against a 1e-2 tolerance). At
+dx = 5 nm the same check measures 2.0e-3. The accepted P5 configuration (dx = 10 nm, 64×64,
+r₀ = 300 nm) is kept as approved rather than refined after seeing the result; flagging the margin
+rather than quietly moving the grid. If you would prefer V1 to run at dx = 5 nm, say so and it is a
+one-line change.
+
+**F4. A NaN reached the gradient through `jnp.sqrt`, and the guard tests caught it.**
+`∇φ/|∇φ|` was double-where guarded at the division, but `|∇φ| = sqrt(Σ(∂φ)²)` has an infinite
+derivative at zero, and `0 * inf` is NaN — so the *masked* branch still poisoned the backward pass
+at the medial axis. Both square roots in `stencils.py` now guard the sqrt itself, not only the
+division that follows. Pinned by `test_no_nan_reaches_the_gradient_through_the_medial_axis`.

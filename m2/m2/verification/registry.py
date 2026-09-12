@@ -27,8 +27,8 @@ class CheckSpec:
 
 
 _SPECS = [
-    CheckSpec("V1", "Isotropic etch: r(t) = r0 - R t (positive rate removes), rel. error < 1% at 200 steps", "§8.1", ("fast",), ("M2.1",)),
-    CheckSpec("V2", "Plane translation at exactly V, error < 0.1%", "§8.1", ("fast",), ("M2.1",)),
+    CheckSpec("V1", "Isotropic etch: r(t) = r0 - R t (positive rate removes), rel. error < 1% at 200 steps; reduced travel at M2.1, full at M2.2", "§8.1", ("fast",), ("M2.1", "M2.2")),
+    CheckSpec("V2", "Plane translation at exactly R, error < 0.1% of travel; reduced travel at M2.1, full at M2.2", "§8.1", ("fast",), ("M2.1", "M2.2")),
     CheckSpec("V3", "Collimated aperture limit: sidewall within 0.5° of 90°", "§8.1", ("gate",), ("M2.7",)),
     CheckSpec("V4", "ON HOLD (decision §11): needs a steady facet angle derived for a monotone cos^p law", "§8.1", ("gate",), ("M2.7",)),
     CheckSpec("V5", "Method of manufactured solutions: observed order", "§8.2", ("nightly",), ("M2.3",)),

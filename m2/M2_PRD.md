@@ -342,7 +342,7 @@ Outputs an engineer cares about: `depth`, `CD` at three heights, `sidewall_angle
 | # | Milestone | Gate |
 |---|---|---|
 | **M2.0** | Repo scaffold, `CLAUDE.md`, schema, config, CI, **verification ledger** | `pytest` green; sign convention asserted; **V19** passes (the canary is caught); ledger writes rows |
-| **M2.1** | 2D forward: advection, fixed-N stepping, CFL assertion. **Plus the velocity-request assembly** — evaluation band, padded set with `weights`/`cell_id`/`n_active`, K sizing, closest-point projection and gather — moved here from §5.4/M2.2 by the 2026-09-11 scope decision, so the contract is first exercised by checks with closed-form answers | **V1, V1a, V2, V20** |
+| **M2.1** | 2D forward: advection, fixed-N stepping, CFL assertion. **Plus the velocity-request assembly** — evaluation band, padded set with `weights`/`cell_id`/`n_active`, K sizing, closest-point projection and gather — moved here from §5.4/M2.2 by the 2026-09-11 scope decision, so the contract is first exercised by checks with closed-form answers | **V1, V2 in reduced form** (travel held inside the extension band; full travel needs reinitialisation and runs at M2.2 — owner decision 2026-09-11, option A), **V1a, V20** |
 | **M2.2** | Reinitialisation, and the PDE-based extension option (§5.4's closest-point gather landed at M2.1) | **V8, V9, V10, V11, V12** — V12 especially, see §8.3 |
 | **M2.3** | **Reverse-mode adjoint, 2D.** Contract v0.2 stays provisional until the M3 owner signs off (decision §3) | **V14, V15, V16** on the smooth functional; **V14a/V14b/V14c** analytic sensitivities; adjoint ≤3× forward in 2D unchecked; k measured and the M2.4 numbers proposed. V5–V7 convergence orders reported |
 | **M2.4** | Checkpointing + 3D | **V17, V18**; 3D **V14** on case S03; peak memory **<40 GB** on one H100; recompute overhead ≤2× with two-level checkpointing; adjoint ratio **≤4×** warm wall-clock (decision §7; the old 8 GB figure was fp32-sized and is withdrawn) |
@@ -465,7 +465,11 @@ verification suite nobody runs is worse than none because it produces false conf
 
 These have exact answers. Disagreement is unambiguous.
 
-- **V1 — Isotropic etch.** Circle (2D) / sphere (3D) under R = const. **Amended (decision §1,
+- **V1 — Isotropic etch.** Circle (2D) / sphere (3D) under R = const. **At M2.1 this runs in
+  reduced form**: 200 steps as specified, with the travel distance held inside the extension band,
+  because without reinitialisation (M2.2) a band-limited velocity extension distorts φ until the
+  front stalls. Full travel runs at M2.2. The constraint scales with dx — the band is a fixed number
+  of *cells* — so the convergence studies (V6, V7) cannot refine the grid until M2.2 either. **Amended (decision §1,
   confirmed 2026-09-11): a positive rate removes material, so a solid disk shrinks** and the radius
   must satisfy r(t) = r₀ − R·t. The PRD's original growth form assumed the pre-decision sign
   convention. Configuration in `reports/proposals.md` P5. Tolerance: relative error < 1% at 200 steps. Tests advection,
