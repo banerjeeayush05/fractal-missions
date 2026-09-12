@@ -108,12 +108,22 @@ def test_v10_grid_orientation_isotropy(ledger_measure):
 
 
 @pytest.mark.check("V8")
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN DISCREPANCY, logged with evidence (OPEN_QUESTIONS G1, owner accepted 2026-09-11). "
+    "43% area loss with the first-order Godunov scheme §5.2 mandates. It is the scheme, not a bug: "
+    "the loss converges at first order (43/21/13.3% at 100^2/200^2/300^2), a textbook upwind "
+    "advection with none of M2's machinery loses 92.5%, and reinitialisation improves it. Reaching "
+    "2% would need ~2000^2. The tolerance is NOT changed (§11). Revisit when WENO5 lands."))
 def test_v8_zalesak_disk(ledger_measure):
     """A notched disk in a rigid rotation field, one full revolution (§8.3).
 
     Area preserved to < 2 %, and the notch must survive. The canonical level-set test, and the
     standard against which every scheme in the literature reports. The velocity is the test-only
     rigid-rotation model approved in decision C2.
+
+    Marked xfail(strict) so the failure is *recorded* rather than tolerated: the ledger row reads
+    FAIL with the measured numbers, and if the check ever starts passing the strict marker turns
+    that into a failure too, so a fix cannot land unnoticed.
     """
     cfg = synthetic_config((100, 100), spacing_nm=1.0, n_steps=628)
     dx = cfg.grid.spacing_nm
@@ -140,7 +150,11 @@ def test_v8_zalesak_disk(ledger_measure):
                            "notch_filled_fraction_before": filled_before,
                            "notch_filled_fraction_after": filled_after,
                            "max_cfl": result.max_cfl, "revolutions": 1, "n_steps": cfg.n_steps,
-                           "scheme": "first-order Godunov, TVD-RK2 (§5.2)"})
+                           "scheme": "first-order Godunov, TVD-RK2 (§5.2)",
+                           "known_discrepancy": "OPEN_QUESTIONS G1; owner accepted 2026-09-11",
+                           "convergence": {"100^2": 0.430, "200^2": 0.210, "300^2": 0.133},
+                           "plain_upwind_no_m2_machinery": 0.925,
+                           "resolution_needed_for_2pct": "~2000^2, not runnable in any tier"})
     assert area_loss < 0.02, (f"area loss {area_loss:.4f} after one revolution — record as a finding "
                               f"with the WENO5 result alongside, do not change the tolerance (§11)")
     assert filled_after < 0.25, f"the notch filled in: {filled_after:.2f} of it is now solid"

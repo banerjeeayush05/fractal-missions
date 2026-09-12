@@ -566,3 +566,50 @@ monotonically across the lateral axis jumps by the domain width at the seam, and
 correctly repairs that seam — which looked like a solver regression but was a bad test geometry. The
 vertical-sidewall case now uses a slab, whose distance to the nearer periodic image is genuinely
 periodic and comes back bit-for-bit unchanged. Worth remembering when the coupon geometries grow.
+
+**G1 status: LOGGED AS A KNOWN DISCREPANCY** (owner accepted 2026-09-11). The V8 test is marked
+`xfail(strict=True)` so the ledger row reads **fail** with the measured numbers and the suite does
+not go green on a tolerated failure — and if V8 ever starts passing, the strict marker fails too, so
+a fix cannot land unnoticed. The tolerance is unchanged (§11). M2.2 is accepted with this exception.
+
+---
+
+## The half-day diagnostic: does the diffusion matter for the product?
+
+Asked and answered on the coupon geometry rather than on Zalesak. Two measurements:
+
+**Isotropic etch, where an exact answer exists.** Under a constant isotropic rate a signed-distance
+field simply shifts, so the exact interface at time T is the −R·T level set of the initial field —
+corners included. Error against that exact answer, on the coupon trench:
+
+| dx | depth error | CD error | sidewall angle error |
+|---|---|---|---|
+| 10 nm | 0.004 nm | 0.057 nm | **0.72°** |
+| 5 nm | 0.006 nm | 0.011 nm | 0.17° |
+| 2.5 nm | 0.007 nm | 0.014 nm | 0.03° |
+
+**Directional etch through a mask window — the production model.** Self-convergence against dx = 2.5 nm,
+800 nm of etching:
+
+| dx | depth | CD @100 nm | CD @400 nm | sidewall angle |
+|---|---|---|---|---|
+| 10 nm | +0.093 nm | +0.282 nm | +0.127 nm | **+1.42°** |
+| 5 nm | +0.030 nm | +0.090 nm | +0.006 nm | +0.49° |
+
+**H1. The finding: CD and depth are fine, sidewall angle is not.** At the production resolution of
+dx = 10 nm, discretisation costs ~0.3 nm of CD and ~0.1 nm of depth — comfortably inside any
+metrology floor — but **1.4° of sidewall angle**. That exceeds V3's requirement (within 0.5° of 90°)
+and is about 7× the metrology repeatability proposed in P8 (0.2°). It falls to ~0.5° at dx = 5 nm and
+below 0.2° at dx = 2.5 nm, converging between first and second order.
+
+So the case for a higher-order scheme rests on sidewall angle, not on Zalesak. **This needs an owner
+decision** — see the report for the options (WENO5 at dx = 10, or run the coupon cases at finer dx).
+
+**H2. "Infinitely selective mask, not modelled" is under-specified, and it bites now.**
+Decision §2 says the trench is pre-cut into φ and the mask is infinitely selective. But with nothing
+representing the mask, a directional etch removes the flat field at exactly the rate it removes the
+trench floor, so the trench never deepens — it translates downward, preserving its depth. The
+diagnostic above had to emulate the mask as a test-only lateral window on the rate.
+Needed: how is the mask's footprint represented? A static lateral mask field multiplying the rate is
+the obvious candidate — time-invariant, differentiable, static shapes — but it is not specified, and
+M2.5's extraction and M2.8's recovery both depend on it. **Blocks a meaningful coupon simulation.**

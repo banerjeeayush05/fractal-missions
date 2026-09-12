@@ -152,3 +152,65 @@ def radius_at_angle(phi, spacing_nm, centre_index, angle_rad, max_cells=None):
     i = int(above[0])
     frac = -vals[i - 1] / (vals[i] - vals[i - 1])
     return spacing_nm * (ts[i - 1] + frac * (ts[i] - ts[i - 1]))
+
+
+# --- test-only profile extraction (M2.5 owns the differentiable version) -----------------------
+# 1D sub-cell zero crossings along grid rows: enough to measure CD, depth and sidewall angle for a
+# diagnostic. Never a substitute for M2.5's extraction.
+
+def half_width_profile(phi, grid, centre_index=None):
+    """Half-width of the open slot at each row, in nm, by sub-cell crossing from the centre out."""
+    import numpy as _np
+
+    arr = _np.asarray(phi)
+    dx = grid.spacing_nm
+    c = arr.shape[1] // 2 if centre_index is None else centre_index
+    widths = _np.full(arr.shape[0], _np.nan)
+    for i in range(arr.shape[0]):
+        row = arr[i, c:]
+        if row[0] <= 0:
+            continue
+        below = _np.flatnonzero(row < 0)
+        if below.size == 0:
+            continue
+        j = int(below[0])
+        frac = row[j - 1] / (row[j - 1] - row[j])
+        widths[i] = dx * (j - 1 + frac)
+    return widths
+
+
+def cd_at_depth(phi, grid, surface_nm, depth_nm):
+    """CD (full width) at a fixed absolute depth below the original surface, in nm."""
+    import numpy as _np
+
+    widths = half_width_profile(phi, grid)
+    z = _np.arange(len(widths)) * grid.spacing_nm
+    i = int(_np.argmin(_np.abs(z - (surface_nm - depth_nm))))
+    return 2.0 * widths[i]
+
+
+def floor_depth(phi, grid, surface_nm):
+    """Depth of the trench floor below the original surface, in nm (centre column)."""
+    import numpy as _np
+
+    col = _np.asarray(phi)[:, _np.asarray(phi).shape[1] // 2]
+    above = _np.flatnonzero(col > 0)
+    if above.size == 0:
+        return _np.nan
+    i = int(above[0])
+    frac = -col[i - 1] / (col[i] - col[i - 1])
+    return surface_nm - grid.spacing_nm * (i - 1 + frac)
+
+
+def sidewall_angle_deg(phi, grid, surface_nm, window_nm):
+    """Least-squares sidewall angle from vertical, over a fixed absolute depth window (P2)."""
+    import numpy as _np
+
+    widths = half_width_profile(phi, grid)
+    z = _np.arange(len(widths)) * grid.spacing_nm
+    depth = surface_nm - z
+    sel = (depth >= window_nm[0]) & (depth <= window_nm[1]) & _np.isfinite(widths)
+    if sel.sum() < 3:
+        return _np.nan
+    slope = _np.polyfit(z[sel], widths[sel], 1)[0]
+    return float(_np.degrees(_np.arctan(slope)))
