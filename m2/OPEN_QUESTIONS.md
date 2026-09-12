@@ -514,3 +514,55 @@ one-line change.
 derivative at zero, and `0 * inf` is NaN — so the *masked* branch still poisoned the backward pass
 at the medial axis. Both square roots in `stencils.py` now guard the sqrt itself, not only the
 division that follows. Pinned by `test_no_nan_reaches_the_gradient_through_the_medial_axis`.
+
+---
+
+## M2.2 findings
+
+**G0. F1 and F2 are resolved.** Reinitialisation removes the band limit: with it on, plane
+translation over 150 nm (≈ 2× the extension band) lands within 7.4e-6 nm — 4.9e-8 of the travel,
+against a 1e-3 tolerance. With it off, the same run still stalls at 47 %. Both halves are pinned by
+`test_reinitialisation_is_what_removes_the_band_limit`, so the reason reinitialisation exists cannot
+become folklore. V1 and V2 are back at full travel, and V1's margin improved on its own (F3):
+relative error 3.8e-3 against a 1e-2 tolerance, where the reduced form measured 8.6e-3.
+
+**G1. V8 (Zalesak) fails, and it is the scheme, not a bug.** **Needs an owner decision.**
+After one revolution: **43 % area loss, and the notch fills completely.** The failure converges away
+at roughly first order, which is what the mandated first-order Godunov scheme (§5.2) should do:
+
+| grid | disk radius | area loss | notch filled |
+|---|---|---|---|
+| 100² (the canonical setup) | 15 cells | 43.0 % | 100 % |
+| 200² | 30 cells | 21.0 % | 90 % |
+| 300² | 45 cells | 13.3 % | 67 % |
+
+Reaching 2 % would need roughly a 2000² grid, which no tier can run. The PRD anticipated this:
+record it as a finding **with the WENO5 result alongside**, and do not change the tolerance (§11,
+decision §11). WENO5 exists as a §5.2 flag but is not implemented, so the finding is currently
+half-complete. See the report for options; M2.2's gate cites V8, so the gate is not met until this
+is decided.
+
+**G2. "Area" is unspecified in V8, V9 and V12, and the candidate measures differ by an order of
+magnitude.** One answer is needed, not three. For V9's reversibility run:
+
+| measure | reads | what it actually measures |
+|---|---|---|
+| zero-contour XOR (sub-cell) | **0.74 %** | the symmetric difference of the two regions — exact for disks |
+| sharp cell indicator | 4.1 % | the same, quantised to whole cells; floor is one cell ring = 10 % of the area |
+| mollified-Heaviside XOR | 5.3 % | not the region difference: it also responds to how φ is reshaped near the interface |
+
+V9 and V12 currently assert the contour measure and record the others. V12's own numbers: the
+interface does not move at all (0.000 pm), while the mollified measure reads 0.115 % and grows with
+the smoothing width. **Awaiting confirmation that the zero contour is the intended measure.**
+
+**G3. V10's verdict depends on the resolution it runs at, which the PRD does not specify.**
+The anisotropy is real and first-order in dx: 4.2 %, 1.6 %, 0.67 % at dx = 10, 5, 2.5 nm. It passes
+the 2 % tolerance from about 30 cells across the feature onward. V10 now runs at dx = 5 nm on the
+stated rule that verification should run at a production-representative resolution — the coupon's
+smallest feature is 50 cells across, while the old setup was 15. Flagged rather than assumed.
+
+**G4. A periodic lateral boundary requires a periodic initial condition.** A φ that increases
+monotonically across the lateral axis jumps by the domain width at the seam, and reinitialisation
+correctly repairs that seam — which looked like a solver regression but was a bad test geometry. The
+vertical-sidewall case now uses a slab, whose distance to the nearer periodic image is genuinely
+periodic and comes back bit-for-bit unchanged. Worth remembering when the coupon geometries grow.

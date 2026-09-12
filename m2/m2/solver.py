@@ -15,6 +15,9 @@ Hard requirements this file exists to honour:
   avoids any question about how it composes with `grad`.
 - **Endpoint-only output** (decision §9): the differentiated solve returns the final φ. Diagnostics
   come back alongside it but are not part of the differentiated value.
+- **Reinitialisation on a fixed schedule** (§5.3, M2.2): every `reinit_every` steps, `n_reinit`
+  iterations. The schedule depends on the step index alone, never on the data, so the graph stays
+  static; `lax.cond` only chooses *when*, not *how many*.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ import m2  # noqa: F401  (enables fp64)
 from m2.band import assemble_request, estimate_capacity, gather_to_band
 from m2.config import M2Config
 from m2.constants import CFL_MAX, DPHI_DT_RATE_SIGN
+from m2.reinit import reinitialise
 from m2.schema import Grid, check_velocity_output
 from m2.velocity import model_for
 
@@ -99,8 +103,13 @@ def step(
     step_index,
     run_seed,
     time: float,
+    n_reinit: int = 0,
+    reinit_every: int = 1,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """One TVD-RK2 (Heun) step. Returns φ, the step's CFL number and its peak occupancy."""
+    """One TVD-RK2 (Heun) step, with reinitialisation on the fixed schedule.
+
+    Returns φ, the step's CFL number and its peak occupancy.
+    """
     kwargs = dict(grid=grid, bands=bands, model=model, capacity=capacity, run_seed=run_seed,
                   step_index=step_index)
 
@@ -109,6 +118,12 @@ def step(
 
     rate1, active1 = rate_field(phi_euler, material, params, time=time + dt, stage_index=1, **kwargs)
     phi_next = 0.5 * (phi + phi_euler + dt * _advect(phi_euler, rate1, grid))
+
+    if n_reinit > 0:
+        # The schedule is a function of the step index only — data-independent, so `lax.cond`
+        # selects when to repair, never how many iterations to run (§5.2, §5.3).
+        due = (step_index + 1) % reinit_every == 0
+        phi_next = jax.lax.cond(due, lambda p: reinitialise(p, grid, n_reinit), lambda p: p, phi_next)
 
     cfl = jnp.maximum(jnp.max(jnp.abs(rate0)), jnp.max(jnp.abs(rate1))) * dt / grid.spacing_nm
     return phi_next, cfl, jnp.maximum(active0, active1)
@@ -139,7 +154,8 @@ def solve(
         phi, t = carry
         phi_next, cfl, occupancy = step(phi, material, params, grid=cfg.grid, bands=cfg.bands,
                                         model=model, capacity=capacity, dt=h, step_index=i,
-                                        run_seed=cfg.seed, time=t)
+                                        run_seed=cfg.seed, time=t, n_reinit=cfg.n_reinit,
+                                        reinit_every=cfg.reinit_every)
         return (phi_next, t + h), (cfl, occupancy)
 
     (phi_final, _), (cfls, occupancies) = jax.lax.scan(body, (phi0, 0.0), jnp.arange(n))
@@ -172,7 +188,7 @@ def final_phi(cfg: M2Config, phi0: jax.Array, material: jax.Array, params: Any,
         phi, t = carry
         phi_next, _, _ = step(phi, material, params, grid=cfg.grid, bands=cfg.bands, model=model,
                               capacity=capacity, dt=cfg.dt_s, step_index=i, run_seed=cfg.seed,
-                              time=t)
+                              time=t, n_reinit=cfg.n_reinit, reinit_every=cfg.reinit_every)
         return (phi_next, t + cfg.dt_s), None
 
     (phi_out, _), _ = jax.lax.scan(body, (phi0, 0.0), jnp.arange(cfg.n_steps))

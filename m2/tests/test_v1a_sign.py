@@ -59,14 +59,25 @@ def test_downward_facing_surface_does_not_move(ledger_measure):
 
 @pytest.mark.check("V1a")
 def test_vertical_sidewall_does_not_move(ledger_measure):
-    """n·ẑ = 0 on a vertical wall — the most common surface in a trench, and the kink in the law."""
+    """n·ẑ = 0 on a vertical wall — the most common surface in a trench, and the kink in the law.
+
+    The geometry is a **slab**, not a single wall. Lateral boundaries are periodic (§5.1), and a φ
+    that increases monotonically across x is not periodic: it jumps by the domain width at the seam,
+    which reinitialisation then correctly repairs. A slab's signed distance — to the nearer periodic
+    image — is genuinely periodic, and comes back bit-for-bit unchanged.
+    """
     cfg = _cfg()
-    x = np.arange(cfg.grid.shape[1]) * cfg.grid.spacing_nm
-    phi0 = (np.broadcast_to(x, cfg.grid.shape) - 320.0).astype(np.float64)  # solid at small x
+    dx = cfg.grid.spacing_nm
+    x = np.arange(cfg.grid.shape[1]) * dx
+    extent = cfg.grid.shape[1] * dx
+    distance = np.minimum(np.abs(x - 320.0), extent - np.abs(x - 320.0)) - 100.0
+    phi0 = np.broadcast_to(distance, cfg.grid.shape).astype(np.float64)
+
     result = _run(jnp.asarray(phi0), cfg)
     drift = float(np.max(np.abs(np.asarray(result.phi) - phi0)))
     assert drift == 0.0, f"a vertical sidewall moved by {drift:g} nm"
-    ledger_measure["sidewall_drift_nm"] = drift
+    ledger_measure.update({"sidewall_drift_nm": drift, "geometry": "periodic slab",
+                           "note": "a monotone-in-x wall is not periodic; the seam is not a sidewall"})
 
 
 @pytest.mark.check("V1a")
