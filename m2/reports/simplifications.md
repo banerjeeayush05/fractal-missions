@@ -15,8 +15,27 @@ mask would add two more transitions and their erosion physics to a mission whose
 geometry engine, not selectivity.
 
 **Cost.** `mask_remaining` has no physical reference case. It is still implemented and tested
-against synthetic geometry at M2.5, but it is never validated against the coupon. If mask erosion
-later matters, this is the first simplification to revisit.
+against synthetic geometry at M2.5, but it is never validated against the coupon.
+
+**Status, 2026-09-13.** Under revision. Finding H2 showed that "not modelled" taken literally makes
+a patterned etch impossible to simulate: with nothing covering the field, a directional etch strips
+the flat surface at the rate it deepens the floor, so the trench translates instead of deepening.
+The proposal on the table is to model the mask as **geometry** at M2.6 — a solid body in φ, marked
+as mask material, with an etch-rate multiplier of zero — which preserves infinite selectivity while
+restoring pattern transfer, undercut and a real mask corner. Awaiting the owner's amendment to §2.
+
+**When erosion arrives.** Infinite selectivity is the zero value of the per-material rate multiplier
+that decision §10 already puts in the parameter PyTree, so switching it on is a number, not a
+rebuild. What is missing is physics, not code: a selectivity value (measured on the coupon, or from
+M5) and the angular yield curve that makes a mask corner facet rather than merely shorten (M5, fed
+by M3 — and the subject of V4, currently on hold for exactly that reason).
+
+**The risk this simplification carries.** Silicon-to-oxide selectivity in a chlorine etch is
+typically in the tens, so a 2500 nm silicon etch may remove a meaningful fraction of a 500 nm oxide
+mask. If it does, the mask corner recedes, the opening widens, and the top CD drifts — an error that
+looks like physics, would be absorbed into a fitted closure parameter, and would then fail to
+transfer to a different mask thickness. **Ask whether the coupon metrology can report mask loss**;
+that measurement is what tells us whether the assumption is safe.
 
 ## S2 — First demo is 2D, and 3D is not physically meaningful for these cases
 
