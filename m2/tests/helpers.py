@@ -214,3 +214,16 @@ def sidewall_angle_deg(phi, grid, surface_nm, window_nm):
         return _np.nan
     slope = _np.polyfit(z[sel], widths[sel], 1)[0]
     return float(_np.degrees(_np.arctan(slope)))
+
+
+def consistent_config(travel_nm, spacing_nm=10.0, shape=(64, 64), **kw):
+    """A synthetic config whose derived timing is self-consistent.
+
+    `synthetic_config` takes an explicit step count, so pairing it with an unrelated depth silently
+    produces a huge dt — CFL 5 rather than 0.4. This derives both together: depth = travel, and
+    N = ceil(travel / (cfl_target * dx)), exactly as the config loader does for a coupon case.
+    """
+    import math
+
+    n_steps = int(math.ceil(travel_nm / (0.4 * spacing_nm)))
+    return synthetic_config(shape, spacing_nm, n_steps=n_steps, depth_nm=travel_nm, **kw)

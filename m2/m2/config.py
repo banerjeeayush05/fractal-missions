@@ -448,3 +448,14 @@ def _choice(v: Any, options: tuple[str, ...], name: str, errs: list[str]) -> str
         errs.append(f"{name}: must be one of {options}, got {v!r}")
         return None
     return v
+
+
+def parameter_tree(cfg: M2Config) -> tuple[dict[str, float], dict[str, float]]:
+    """The differentiable parameter PyTree and its declared scales (decision B20).
+
+    Everything M2 differentiates with respect to lives in this tree and is never captured in a
+    closure — a captured value is invisible to `jax.grad` and produces a silently zero gradient
+    column (§5.0, §7.3). The scales travel with the values because the gradient harness needs them:
+    perturbations use max(|value|, scale), so a parameter sitting near zero is still probed.
+    """
+    return dict(cfg.velocity.values), dict(cfg.velocity.scales)

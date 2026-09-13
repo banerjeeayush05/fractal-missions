@@ -639,3 +639,42 @@ which P4 previously said it lacked; (b) if the measured loss is non-negligible, 
 a *contact* and becomes a second material *crossing*, which the `w_mat` study would then have to
 cover. Worth deciding before M2.6 freezes its study design. Note also that the fit must respect the
 pre-registration rule: selectivity is fitted on `calibrate` cases only.
+
+---
+
+## M2.3 findings
+
+**I1. The Taylor h-range set at M2.0 overshoots the quadratic regime on the real solver.**
+**Needs an owner decision: it changes the protocol B3 fixed.**
+
+V14 passes on a 13-step run and **fails on a 50-step run** — on a gradient that is demonstrably
+correct. Local slopes over 3-point windows, from large h to small:
+
+    reinit on,  N=50:  0.47  1.50  1.60  1.64  2.00  2.02  2.01  2.01
+    reinit off, N=50:  0.89  2.15  0.54  3.18  4.64  0.53  3.78      (a non-smooth map)
+
+The small-h decades are a clean O(h²). The top of B3's range is simply outside the regime where the
+quadratic model holds: at h = 0.1 a 10 % change in the etch rate moves the interface about two
+cells, which is a large geometric change, and the remainder is then governed by higher-order terms
+rather than by the gradient. A least-squares fit across both regimes lands near 1.7 and fails.
+
+**The gradient is fine, and we can show it:** the V19 canary on this same solver objective catches a
+5 % corruption in every component, with slopes collapsing to ~1.0. So the check has power; at large
+h it lacks validity.
+
+**Proposed rule, for approval.** Cap the largest perturbation by how far it moves the interface, not
+by a fixed number: `h_max` such that the induced motion is below ~0.1 cell, i.e.
+`h_max ≈ 0.1 / (travel in cells)`. It is derived from what the test needs rather than fitted to the
+data, and it predicts the observed transition (N = 50, 20 cells of travel → h_max ≈ 5e-3; the data
+turns quadratic at h ≈ 1e-2). With the floor-based exclusion below, the usable window is then about
+3–4 decades, which the decision §4 rules already pass as `narrow_span`.
+
+**I2. Reinitialisation regularises the map, not just the forward solve.** With it off, the remainder
+is erratic at every scale (0.23 → 2.5 → 1.5e-4 for successive h) — the functional is not smooth.
+With it on, the small-h remainder is clean to two decimals. Worth knowing before anyone proposes
+reinitialising less often to save time.
+
+**I3. The usable h-window narrows as N grows, and the noise floor is why.** The floor scales as
+√N·eps·|J|, so at production N = 625 it is ~7× higher than at N = 13. Combined with I1's upper cap,
+the window at production scale may be under three decades. This needs measuring before the M2.4 and
+M2.7 gates depend on it — not discovering there.
