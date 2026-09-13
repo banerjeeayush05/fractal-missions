@@ -51,9 +51,13 @@ lateral position of the mask centre, over which that material's fraction is ≥ 
 fraction-weighted sub-cell crossing at both ends. It returns `None` when no mask material exists,
 which is the case for the whole coupon (the mask is not modelled, S1 in `simplifications.md`).
 
-**Why.** It has no physical reference case in either phase, so it is tested against synthetic
-geometry only. Keeping it a real sub-cell measurement rather than a cell count means it stays
-differentiable if a mask is ever modelled.
+**Why.** Keeping it a real sub-cell measurement rather than a cell count means it stays
+differentiable.
+
+**Updated 2026-09-13.** The mask is modelled as geometry from M2.6, and the coupon metrology can
+report mask loss, so `mask_remaining` now **has a physical reference case**. At infinite selectivity
+the model predicts exactly zero loss, which makes this the sharpest test of that assumption we have:
+any measured loss falsifies the zero multiplier directly, and its size sets the selectivity to fit.
 
 ## P5 — V1 configuration (M2.1) **ACCEPTED 2026-09-11**
 

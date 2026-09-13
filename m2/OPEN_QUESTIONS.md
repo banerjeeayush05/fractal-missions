@@ -621,3 +621,21 @@ because the adjoint is automatic — changing the forward scheme later means re-
 checks, not rewriting an adjoint. Until then the coupon runs carry ~1.4° of sidewall-angle
 discretisation error at dx = 10 nm (H1), which must be quoted alongside any sidewall-angle result
 produced before WENO5 lands. V8 is revisited at the same time.
+
+**H2 RESOLVED (owner, 2026-09-13): the mask is modelled as geometry at M2.6**, as an accepted
+amendment to decision §2. A solid body in φ, marked as mask material, with an etch-rate multiplier
+of zero: infinite selectivity preserved, pattern transfer restored, undercut beneath the mask edge
+allowed, a real mask corner, and geometry M3 can trace rays against. It adds a material *contact*,
+not a *crossing*, so the `w_mat` study still concerns exactly one crossing — the SiGe marker — which
+is what §2 was protecting. M2.6 becomes "multi-material, including the mask". PRD §5.6, §5.7 and the
+§6 milestone table are amended; `reports/simplifications.md` S1 is rewritten so it no longer claims
+the mask is absent. Coupon-shaped runs before M2.6 remain illustrative, not physical.
+
+**H3 (M2.6/M2.8). Selectivity becomes a fittable parameter, and mask loss is the measurement that
+tests it.** The owner confirms the coupon metrology can report mask loss. At infinite selectivity
+the model predicts exactly zero, so any measured loss falsifies the zero multiplier and its size
+sets the value to fit. Two things follow: (a) `mask_remaining` gains a physical reference case,
+which P4 previously said it lacked; (b) if the measured loss is non-negligible, the mask stops being
+a *contact* and becomes a second material *crossing*, which the `w_mat` study would then have to
+cover. Worth deciding before M2.6 freezes its study design. Note also that the fit must respect the
+pre-registration rule: selectivity is fitted on `calibrate` cases only.

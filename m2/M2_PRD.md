@@ -308,6 +308,19 @@ at that boundary is then destroyed.
 **Mollify.** Material fraction transitions over a width `w_mat` (config, default 2 cells)
 using a smoothed Heaviside. Effective velocity is the fraction-weighted blend.
 
+**Amended (owner, 2026-09-13): the mask is modelled, as geometry.** Decision §2 originally left the
+mask out to keep phase 1 single-material. Finding H2 showed that taken literally this makes a
+patterned etch impossible to simulate: with nothing covering the field, a directional etch strips
+the flat surface at the rate it deepens the floor, so the trench translates instead of deepening.
+From M2.6 the mask is a solid body in φ, marked as mask material, with an etch-rate multiplier of
+**zero** — infinite selectivity preserved, pattern transfer restored, undercut beneath the mask edge
+allowed, and the mask corner a real geometric corner. M3 can also trace rays against it.
+
+This adds a material **contact**, not a **crossing**: the front slides along and under the mask
+(rate zero) but never passes into it, so the `w_mat` study still concerns exactly one crossing, the
+SiGe marker, which is what decision §2 was protecting. If the mask's multiplier is ever made
+non-zero, that changes and the mask corner becomes a second crossing to study.
+
 **Amended (decision §2, §10).** Mollified transitions are accepted; the `w_mat` study is the
 evidence that confirms or overturns that, so it is run honestly and reported whatever it shows.
 The physical reference case is the phase-2 SiGe marker layer (~30 nm, `provisional`, a config
@@ -323,6 +336,12 @@ and must be reported, not tuned away. See open question **Q3**.
 
 Outputs an engineer cares about: `depth`, `CD` at three heights, `sidewall_angle`,
 `mask_remaining`, `bow`.
+
+**`mask_remaining` gains a physical reference case (owner, 2026-09-13):** the coupon metrology can
+report mask loss. With the mask modelled at infinite selectivity the model predicts **zero** loss,
+so any measured loss is direct evidence that the zero multiplier is wrong — and the size of the
+mismatch sets the selectivity to fit. This matters because mask erosion drifts the top CD, which a
+fit would otherwise absorb into a closure parameter and then fail to transfer.
 
 - **Sub-cell extraction only.** Marching cubes / squares with linear interpolation of the
   zero crossing. Cell counting quantises the output to the grid spacing and its derivative
@@ -353,7 +372,7 @@ Outputs an engineer cares about: `depth`, `CD` at three heights, `sidewall_angle
 | **M2.3** | **Reverse-mode adjoint, 2D.** Contract v0.2 stays provisional until the M3 owner signs off (decision §3) | **V14, V15, V16** on the smooth functional; **V14a/V14b/V14c** analytic sensitivities; adjoint ≤3× forward in 2D unchecked; k measured and the M2.4 numbers proposed. V5–V7 convergence orders reported |
 | **M2.4** | Checkpointing + 3D | **V17, V18**; 3D **V14** on case S03; peak memory **<40 GB** on one H100; recompute overhead ≤2× with two-level checkpointing; adjoint ratio **≤4×** warm wall-clock (decision §7; the old 8 GB figure was fp32-sized and is withdrawn) |
 | **M2.5** | Differentiable extraction | **V13** including the sub-cell smoothness sweep; **V14** on `CD_mid` and `sidewall_angle`, not only the volumetric functional |
-| **M2.6** | Multi-material | Gradient survives an interface crossing a material boundary; `w_mat` sensitivity study reported |
+| **M2.6** | **Multi-material, including the mask as geometry** (amendment to decision §2, owner 2026-09-13) | Gradient survives an interface crossing a material boundary; `w_mat` sensitivity study reported; the mask is a solid body in φ with a zero rate multiplier, so pattern transfer, undercut beneath the mask edge and a real mask corner all work |
 | **M2.7** | Performance + external verification | **V3, V22** (V4 on hold, decision §11); full-resolution 3D **V14**; case S03 in 3D <60 s **warm** on one H100, compile time reported separately; `verification.md` generated from the ledger |
 | **M2.8** | Inverse sanity | Recover a known synthetic parameter set from a synthetic profile with noise, to within the noise floor, from a cold start |
 

@@ -4,38 +4,36 @@ Every simplification M2 makes, with its justification and its cost (PRD §9 item
 Hand-maintained, unlike the verification record, which is generated. Add an entry when you make a
 simplification, not afterwards.
 
-## S1 — The mask is not modelled
+## S1 — The mask is modelled as geometry, with infinite selectivity
 
-**What.** The 500 nm SiO₂ mask is treated as infinitely selective and is not represented. The
-trench is pre-cut through it into the initial φ, in both coupon phases.
+**What.** From M2.6 the 500 nm SiO2 mask is a solid body in φ, marked as mask material, with an
+etch-rate multiplier of **zero**. It never erodes. Before M2.6 it is absent entirely, so any
+coupon-shaped run in M2.1–M2.5 is illustrative, not physical.
 
-**Why.** Decision §2. It keeps phase 1 strictly single-material, and keeps phase 2 to exactly
-**one** material transition — the SiGe marker being studied — rather than three. Modelling the
-mask would add two more transitions and their erosion physics to a mission whose subject is the
-geometry engine, not selectivity.
+**Why.** Amendment to decision §2, owner 2026-09-13. The original decision left the mask out to keep
+phase 1 single-material, but finding H2 showed that a patterned etch cannot be simulated without it:
+with nothing covering the field, a directional etch removes the flat surface at exactly the rate it
+deepens the floor, so the trench translates downward instead of deepening. Modelling it as geometry
+rather than as a rate multiplier keeps undercut beneath the mask edge, gives a real mask corner, and
+lets M3 trace rays against it — a multiplier is invisible to a ray tracer.
 
-**Cost.** `mask_remaining` has no physical reference case. It is still implemented and tested
-against synthetic geometry at M2.5, but it is never validated against the coupon.
-
-**Status, 2026-09-13.** Under revision. Finding H2 showed that "not modelled" taken literally makes
-a patterned etch impossible to simulate: with nothing covering the field, a directional etch strips
-the flat surface at the rate it deepens the floor, so the trench translates instead of deepening.
-The proposal on the table is to model the mask as **geometry** at M2.6 — a solid body in φ, marked
-as mask material, with an etch-rate multiplier of zero — which preserves infinite selectivity while
-restoring pattern transfer, undercut and a real mask corner. Awaiting the owner's amendment to §2.
+**What is still simplified: infinite selectivity.** The mask never erodes or facets. It adds a
+material *contact*, not a *crossing* — the front slides under the mask but never passes into it — so
+the `w_mat` study still concerns exactly one crossing, the SiGe marker.
 
 **When erosion arrives.** Infinite selectivity is the zero value of the per-material rate multiplier
 that decision §10 already puts in the parameter PyTree, so switching it on is a number, not a
-rebuild. What is missing is physics, not code: a selectivity value (measured on the coupon, or from
-M5) and the angular yield curve that makes a mask corner facet rather than merely shorten (M5, fed
-by M3 — and the subject of V4, currently on hold for exactly that reason).
+rebuild. What is missing is physics, not code: a selectivity value, and the angular yield curve that
+makes a mask corner facet rather than merely shorten (M5, fed by M3 — and the subject of V4,
+currently on hold for exactly that reason).
 
-**The risk this simplification carries.** Silicon-to-oxide selectivity in a chlorine etch is
-typically in the tens, so a 2500 nm silicon etch may remove a meaningful fraction of a 500 nm oxide
-mask. If it does, the mask corner recedes, the opening widens, and the top CD drifts — an error that
-looks like physics, would be absorbed into a fitted closure parameter, and would then fail to
-transfer to a different mask thickness. **Ask whether the coupon metrology can report mask loss**;
-that measurement is what tells us whether the assumption is safe.
+**The risk this carries, and how it is checked.** Silicon-to-oxide selectivity in a chlorine etch is
+typically in the tens, so a 2500 nm silicon etch may remove a meaningful fraction of a 500 nm mask.
+If it does, the mask corner recedes, the opening widens and the top CD drifts — an error that looks
+like physics, would be absorbed into a fitted closure parameter, and would then fail to transfer to
+a different mask thickness. **The coupon metrology can report mask loss** (owner, 2026-09-13), so
+this is checkable: the model predicts exactly zero loss, and any measured loss is evidence the
+multiplier must become non-zero.
 
 ## S2 — First demo is 2D, and 3D is not physically meaningful for these cases
 

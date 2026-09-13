@@ -143,6 +143,14 @@ perturbation and reports a pass having probed nothing. Scales are a property of 
 a harness detail — M8 needs the same numbers when it steps across mixed units. M3 should declare
 its own parameters the same way.
 
+**X19. The mask will exist as geometry, which M3 needs for shadowing.** Status: **decided (M2, owner 2026-09-13).**
+From M2.6 the mask is a solid body in φ with a zero etch-rate multiplier, not a rate mask. This
+matters to M3 directly: a ray tracer can intersect geometry but cannot see a multiplier, so a mask
+represented only as "rate = 0 here" would let rays pass straight through it and overestimate flux at
+the trench bottom. M3 should expect a material-fraction field that includes a mask material, and
+should treat it as an opaque obstacle. Until M2.6 lands there is no mask in φ at all, so any
+M2 profile M3 consumes before then is illustrative rather than physical.
+
 ---
 
 ## The M3 conversation: six items, and the freeze depends on four
