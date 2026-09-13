@@ -208,6 +208,12 @@ Advection of φ under etch rate R:  ∂φ/∂t − R |∇φ| = 0   (decision §1
 - Spatial: Godunov upwind Hamiltonian for |∇φ|. WENO5 is an option behind a flag but is
   **not** required for M2 — first-order upwind with adequate resolution is sufficient to
   verify gradients, and the extra stencil complexity is a place for bugs to hide.
+- **Amended (owner, 2026-09-13): WENO5 is scheduled immediately after M2.3.** Measurement on the
+  coupon geometry (OPEN_QUESTIONS H1) shows first-order costs ~1.4° of sidewall angle at dx = 10 nm
+  — inside any metrology floor for CD (0.3 nm) and depth (0.1 nm), but ~3× V3's 0.5° requirement.
+  It lands after the gradient harness exists so V14/V15/V16 verify it immediately, and deferring is
+  nearly free because the adjoint is automatic: changing the forward scheme later means re-running
+  the gradient checks, not rewriting an adjoint. V8's discrepancy is revisited then.
 - Temporal: TVD-RK2 (Heun). RK3 behind a flag.
 
 **Fixed step count. This is a hard requirement.**

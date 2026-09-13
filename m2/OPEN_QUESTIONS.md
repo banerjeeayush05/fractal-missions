@@ -613,3 +613,11 @@ diagnostic above had to emulate the mask as a test-only lateral window on the ra
 Needed: how is the mask's footprint represented? A static lateral mask field multiplying the rate is
 the obvious candidate — time-invariant, differentiable, static shapes — but it is not specified, and
 M2.5's extraction and M2.8's recovery both depend on it. **Blocks a meaningful coupon simulation.**
+
+**H1 decision (owner, 2026-09-13): WENO5 lands immediately after M2.3's gradient harness is green.**
+Reason recorded so the ordering is not re-litigated: new numerics should arrive where V14/V15/V16
+can verify them at once, rather than being checked by eye. The cost of deferring is near zero
+because the adjoint is automatic — changing the forward scheme later means re-running the gradient
+checks, not rewriting an adjoint. Until then the coupon runs carry ~1.4° of sidewall-angle
+discretisation error at dx = 10 nm (H1), which must be quoted alongside any sidewall-angle result
+produced before WENO5 lands. V8 is revisited at the same time.
