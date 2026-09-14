@@ -829,3 +829,53 @@ Note this supersedes I1's h_max rule, which was derived for the wrong bound: it 
 motion at 0.1 cell, but the kinks turn out to be far finer than that — the clean region begins near
 0.002 cells of motion. `h_max_for_interface_motion` is implemented and available, but the anchored
 window is the better mechanism and I recommend it instead.
+
+**I8. V5, V6 and V7 are implemented and reported; the orders are comfortable, with one caveat and
+one structural finding.** (§8.2, M2.3 gate: "V5–V7 convergence orders reported".)
+
+| check | what it measures | requirement | observed | pairwise |
+|---|---|---|---|---|
+| V5 (MMS) | manufactured source, directional law | ≥ 0.9 | **1.73** L¹, 1.62 L∞ | 1.86, 1.70, 1.62 |
+| V6 (spatial) | dx refined, vs V1's analytic disk | ≥ 0.9 | **1.60** L¹, 1.59 L∞ | 1.69, 1.63, 1.48 |
+| V7 (temporal) | dt refined, self-convergence | ≥ 1.9 | **1.990** | 1.97, 1.99, 2.01 |
+
+**The caveat: V5 and V6 exceeding first order is not good news, it is a soft measurement.** A circle
+is the friendliest interface an upwind scheme can be given — smooth, and the exact solution stays a
+signed distance, which reinitialisation keeps restoring. The downward drift in both pairwise
+sequences is superconvergence decaying toward the asymptotic rate. The margin over 0.9 will shrink
+on real geometry, and the half-day diagnostic already showed where: **sidewall angle 1.4° at
+dx = 10 against V3's 0.5°.** V6 passing at 1.60 and V3 failing at dx = 10 are consistent, not
+contradictory, and WENO5 is still the fix. The pairwise sequence is asserted and recorded so the
+shrinkage shows up as a number rather than as a surprise at M2.7.
+
+V7 landing on 1.990 with no drift is the control that makes the caveat credible: the same norm over
+the same region reports exactly the nominal order when the nominal order is what is there.
+
+**The structural finding: a dx-refinement study of this solver is invalid without reinitialisation,
+and the reason is the band.** The extension band is 8 *cells*, so halving dx halves it in nanometres
+while the travel stays fixed. Past some refinement the interface leaves the band it started in;
+outside the band the rate is tapered to zero, so those cells never moved, and φ near the interface is
+assembled from stale values. Measured observed order with reinitialisation off: **−1.96**, i.e. the
+error grows about 4× per refinement. This is the M2.1 decision (owner, option A — "travel beyond the
+extension band needs reinitialisation") reappearing as a convergence result, and it is pinned in
+`test_the_order_study_needs_reinitialisation` so V6's configuration cannot later look like a
+convenient default. V7 is the exception and must run with reinitialisation off — its schedule is
+fixed in *steps*, so refining dt would change how often it fires — so V7 holds the travel to 3 cells,
+a bound taken from the band width rather than chosen after seeing a result.
+
+**V5 required a solver change: an MMS source path** (§8.2 asks for one explicitly). `solver.step`
+and `solver.solve` take an optional `source`; `final_phi` — the differentiated production entry
+point — does not, and `M2Config` has no source field, so no configuration can switch it on.
+`test_the_mms_source_path_is_off_in_production` asserts all three, plus that a non-zero source does
+change the answer, so the path cannot rot into dead code while the order study reports on nothing.
+
+The manufactured solution is worth recording because two details decide whether it is valid rather
+than decorative. φ_exact = |x − c| − r(t) is an **exact signed distance for any r(t)**, so the
+closest-point projection the gather performs lands on the true interface; a manufactured φ with
+|∇φ| ≠ 1 would be projected elsewhere and the solver's rate would not be the R the source assumes.
+And the source **carries the band taper** — S = −r′(t) − w(φ_exact)·R_exact — because the solver's
+rate is `R(projection)·extension_weight(φ)`, which is zero outside the band; an untapered source
+would leave the far field drifting by ∫R dt, and that error propagates inward one cell per step and
+contaminates the measurement region. r(t) = 200 − 3t + 4·sin(2πt/T) oscillates, which no positive
+etch rate produces, so the check cannot be satisfied by the physics being right.
+

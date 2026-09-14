@@ -105,19 +105,32 @@ def step(
     time: float,
     n_reinit: int = 0,
     reinit_every: int = 1,
+    source: Callable[[float], jax.Array] | None = None,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """One TVD-RK2 (Heun) step, with reinitialisation on the fixed schedule.
 
     Returns φ, the step's CFL number and its peak occupancy.
+
+    `source` is the **MMS-only** path required by §8.2 for V5: a function of time returning a field
+    added to the RHS, so a chosen φ_exact can be made an exact solution and the observed order
+    measured. It defaults to `None`, it is not reachable from `M2Config`, and `final_phi` — the
+    differentiated production entry point — does not expose it at all. `tests/test_order.py` asserts
+    that last part, which is §8.2's "test that the flag is off in production runs".
     """
     kwargs = dict(grid=grid, bands=bands, model=model, capacity=capacity, run_seed=run_seed,
                   step_index=step_index)
 
     rate0, active0 = rate_field(phi, material, params, time=time, stage_index=0, **kwargs)
-    phi_euler = phi + dt * _advect(phi, rate0, grid)
+    rhs0 = _advect(phi, rate0, grid)
+    if source is not None:
+        rhs0 = rhs0 + source(time)
+    phi_euler = phi + dt * rhs0
 
     rate1, active1 = rate_field(phi_euler, material, params, time=time + dt, stage_index=1, **kwargs)
-    phi_next = 0.5 * (phi + phi_euler + dt * _advect(phi_euler, rate1, grid))
+    rhs1 = _advect(phi_euler, rate1, grid)
+    if source is not None:
+        rhs1 = rhs1 + source(time + dt)
+    phi_next = 0.5 * (phi + phi_euler + dt * rhs1)
 
     if n_reinit > 0:
         # The schedule is a function of the step index only — data-independent, so `lax.cond`
@@ -139,11 +152,13 @@ def solve(
     capacity: int | None = None,
     n_steps: int | None = None,
     dt: float | None = None,
+    source: Callable[[float], jax.Array] | None = None,
 ) -> SolveResult:
     """Run the forward solve and assert the CFL bound on the host afterwards.
 
     `n_steps` and `dt` override the config only so that V20 can drive the error path; production
     runs take both from the config, where N is derived and cannot be set below the CFL minimum.
+    `source` is the MMS-only path for V5 (§8.2); see `step`.
     """
     model = model_for(cfg.velocity.model) if model is None else model
     capacity = estimate_capacity(cfg.grid, cfg.bands) if capacity is None else capacity
@@ -155,7 +170,7 @@ def solve(
         phi_next, cfl, occupancy = step(phi, material, params, grid=cfg.grid, bands=cfg.bands,
                                         model=model, capacity=capacity, dt=h, step_index=i,
                                         run_seed=cfg.seed, time=t, n_reinit=cfg.n_reinit,
-                                        reinit_every=cfg.reinit_every)
+                                        reinit_every=cfg.reinit_every, source=source)
         return (phi_next, t + h), (cfl, occupancy)
 
     (phi_final, _), (cfls, occupancies) = jax.lax.scan(body, (phi0, 0.0), jnp.arange(n))
