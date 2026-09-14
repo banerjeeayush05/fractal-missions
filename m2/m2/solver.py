@@ -31,6 +31,7 @@ import jax.numpy as jnp
 
 import m2  # noqa: F401  (enables fp64)
 from m2.band import assemble_request, estimate_capacity, gather_to_band
+from m2.checkpoint import scan_steps
 from m2.config import M2Config
 from m2.constants import CFL_MAX, DPHI_DT_RATE_SIGN
 from m2.reinit import reinitialise
@@ -197,18 +198,28 @@ def solve(
 
 
 def final_phi(cfg: M2Config, phi0: jax.Array, material: jax.Array, params: Any,
-              *, model: Callable | None = None, capacity: int | None = None) -> jax.Array:
-    """The differentiable entry point: parameters in, final φ out, nothing else in the path."""
+              *, model: Callable | None = None, capacity: int | None = None,
+              levels: int = 0, segment: int | None = None,
+              residual_factor: float | None = None) -> jax.Array:
+    """The differentiable entry point: parameters in, final φ out, nothing else in the path.
+
+    `levels` selects the checkpoint schedule (§7.4, M2.4): 0 none, 2 two-level, 3 three-level.
+    It changes **only** how much is recomputed, never what is computed — V17 asserts the gradient
+    is identical to the unchecked one, and the time carry is derived from the global step index
+    rather than accumulated, so a replayed segment cannot drift from the original.
+    """
     model = model_for(cfg.velocity.model) if model is None else model
     capacity = estimate_capacity(cfg.grid, cfg.bands) if capacity is None else capacity
 
-    def body(carry, i):
-        phi, t = carry
+    def body(phi, i):
+        # t = i·dt, not a running sum: under checkpointing a segment is replayed from its boundary,
+        # and an accumulated carry would re-add rounding in a different order. This keeps the time
+        # a step sees bitwise identical on recompute, which is half of what V18 requires.
         phi_next, _, _ = step(phi, material, params, grid=cfg.grid, bands=cfg.bands, model=model,
                               capacity=capacity, dt=cfg.dt_s, step_index=i, run_seed=cfg.seed,
-                              time=t, n_reinit=cfg.n_reinit, reinit_every=cfg.reinit_every,
-                              scheme=cfg.spatial_scheme)
-        return (phi_next, t + cfg.dt_s), None
+                              time=i * cfg.dt_s, n_reinit=cfg.n_reinit,
+                              reinit_every=cfg.reinit_every, scheme=cfg.spatial_scheme)
+        return phi_next
 
-    (phi_out, _), _ = jax.lax.scan(body, (phi0, 0.0), jnp.arange(cfg.n_steps))
-    return phi_out
+    return scan_steps(body, phi0, cfg.n_steps, levels=levels, segment=segment,
+                      residual_factor=residual_factor)

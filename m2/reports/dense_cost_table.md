@@ -61,6 +61,16 @@ so it is a lower bound. Recompute = extra forward passes on top of the original 
 | two-level, L tuned to k | 1× | 241 MB | 24.1 GB | 1.12 GB | 225 GB | 47.5 GB |
 | three-level | 2× | 82.1 MB | 8.21 GB | 346 MB | 69.3 GB | 8.98 GB |
 
+### k = 1050
+
+| Scheme | recompute | S03 2D, dx=10 | S03 3D, dx=10 (M2.4 gate) | S03 2D, dx=5 (V6/V7) | S03 3D, dx=5 | M01 2D, dx=2 (phase 2) |
+|---|---:|---:|---:|---:|---:|---:|
+| no checkpointing | 0× | 142 GB | 14.2 TB | 1.13 TB | 227 TB | 66.7 TB |
+| remat step fn only | 1× | 362 MB | 36.2 GB | 1.99 GB | 397 GB | 84.8 GB |
+| two-level √N | 1× | 5.68 GB | 568 GB | 31.8 GB | 6.36 TB | 1.2 TB |
+| two-level, L tuned to k | 1× | 362 MB | 36.2 GB | 2.8 GB | 561 GB | 79.5 GB |
+| three-level | 2× | 238 MB | 23.8 GB | 969 MB | 194 GB | 23.6 GB |
+
 ## 3. Largest k that fits a memory budget
 
 | Domain | Budget | two-level, L tuned: k ≤ | three-level: k ≤ |

@@ -65,8 +65,14 @@ Revisit only for multi-feature or wafer-scale domains. The reference case is sma
 - Fixed counts everywhere: N is derived as ceil(D/(cfl_target·dx)), never hand-written; fixed
   n_reinit, fixed extension iterations. CFL ≤ 0.5 asserted every step, returned as a scan output
   and checked on the host (not `checkify`).
-- fp64 everywhere. Two-level checkpointing means a **nested scan**, not `jax.checkpoint` on the
-  step function alone, which still stores all N carries.
+- fp64 everywhere. Two-level checkpointing is a **nested scan** (`m2/checkpoint.py`), parametrised
+  by segment length L: peak = N/L + L·k, optimal at **L\* = √(N/k)**. At the measured k (349
+  Godunov, 1050 WENO5) that is **L = 1**, which is remat-on-the-step-function — so §7.4's warning
+  against it is inverted at real k and the PRD is amended (finding K2). Three-level is N/L + L + k.
+  Never hand-pick L: derive it from measured k, or it becomes a knob that makes a memory gate pass.
+- **Checkpointing makes the adjoint FASTER here, not slower** (K1): the unchecked tape does not fit,
+  so the usual time-for-memory trade runs backwards. 22.2× → 4.9× at 128²·N=100. Decision I5(a)
+  rests on this.
 - RNG key = f(run_seed, step_index, stage_index, **cell_id**), all carried in VelocityRequest.
   Never global, never stateful, never hashed from `time`.
 - **The stable `cell_id` and the smooth band weight are two halves of one mechanism, not two

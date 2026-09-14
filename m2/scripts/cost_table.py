@@ -31,7 +31,8 @@ BUDGETS = (40e9, 80e9)  # decision §7: peak memory under 40 GB on one H100 (80 
 # linearised part closes over, so this is a count, not an estimate. It is stable in N (349.2, 349.2,
 # 348.7 at N = 25, 50, 100), which is what makes it a per-step factor at all. The bracket is kept
 # alongside it so the M2.0 guess and the M2.3 measurement stay comparable.
-K_BRACKET = (1, 20, 50, 330)
+# 330 is Godunov's measured k; 1050 is WENO5's (3.0x higher - a 7-point stencil against 2).
+K_BRACKET = (1, 20, 50, 330, 1050)
 PASSES_BRACKET = (10, 30)  # field-sized reads+writes per forward step (fused), bracket
 FLOPS_PER_CELL_STEP = 200  # rough: 2 RK stages × ~70 + ~1 amortised reinit iteration × ~50
 
@@ -63,7 +64,11 @@ def schemes(n: int, k: int) -> dict[str, tuple[float, int]]:
     """Peak stored field-equivalents and extra forward passes of recompute, per scheme."""
     c = math.ceil(math.sqrt(n))
     seg = math.ceil(n / c)
-    c_opt = max(1, round(math.sqrt(n * k)))  # two-level with segment length tuned to k
+    # Two-level with the checkpoint count tuned to k: minimise c + (n/c)*k over c, giving
+    # c = sqrt(n*k). **Capped at n**: there cannot be more checkpoints than steps, and without the
+    # cap the table reported a peak LARGER than checkpointing every single step, which is nonsense.
+    # It bit at k = 1050 (WENO5), where sqrt(n*k) = 810 exceeds n = 625.
+    c_opt = max(1, min(n, round(math.sqrt(n * k))))
     seg_opt = math.ceil(n / c_opt)
     return {
         "no checkpointing": (n * k, 0),

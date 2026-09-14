@@ -1038,3 +1038,82 @@ than to reconstruct a diagnostic, and that is now blocked behind H2's resolution
 real geometry at M2.6, and a collimated-etch sidewall measurement wants the real mask, not a lateral
 rate window. Recorded so the justification is not treated as settled evidence.
 
+## M2.4 findings
+
+**K0. Checkpointing, 3D, V17 and V18 are implemented and passing.** `m2/checkpoint.py` provides the
+schedule; `final_phi` takes `levels` (0 none, 2 two-level, 3 three-level) and a segment length.
+V17 holds at 1e-12 across every schedule tried, in 2D and 3D. 3D needed essentially no new code —
+`shift`, the Hamiltonian, the band and the gather are all written over `grid.ndim` — which is the
+§4 dense/static-shape decision being repaid.
+
+**K1. Checkpointing makes the adjoint FASTER, confirming the premise of decision I5(a).**
+Measured warm, compile excluded, 2D on CPU:
+
+| case | unchecked | two-level L=1 | three-level L=25 |
+|---|---|---|---|
+| 64², N=50 | 4.75× | **3.19×** | 4.15× |
+| 128², N=100 | 22.22× | **4.91×** | 6.11× |
+| 192², N=100 | 34.30× | **5.77×** | 6.74× |
+
+The usual time-for-memory trade runs backwards because the unchecked tape does not fit — 4.3 GB at
+128² on an 8 GB machine — so the unchecked adjoint swaps and replaying a segment from cache is
+cheaper than faulting residuals back in. **This was a prediction when I5(a) was decided and it is
+now a measurement.** It does not establish M2.4's ≤4× gate, which is a checkpointed 3D run on the
+H100; these are 2D on CPU.
+
+**K2. §7.4's warning about `jax.checkpoint` is inverted at the measured k. PRD amended.**
+Writing two-level peak as `N/L + L·k`, the optimum is **L\* = √(N/k)**. At N = 625, k = 349 that is
+1.3, i.e. L = 1 — which *is* remat-on-the-step-function, the thing §7.4 warns against. The warning
+was correct under the implicit k = 1 accounting the document was written with, where N carries is
+the naive cost. At k = 349, naive is N·k = 218,000 field-equivalents and remat-on-the-step is
+N + k = 955. Not a small correction: it changes what M2.4 should build.
+
+**K3. Peak memory is only half measurable on this machine, and the gate depends on the half that is
+not.** The distinction had to be made explicit in the code or it would have become a false claim:
+
+- *persistent* storage — segment boundaries kept for the whole backward pass — is measured directly
+  by counting the constants the linearised function closes over, and equals ceil(N/L) exactly;
+- *transient* storage — residuals live while one segment is replayed, the `L·k` term — is recomputed
+  and freed, so it is never a jaxpr constant and is invisible to that method. It is **modelled**.
+
+The transient term dominates: at N = 625, L = 1, k = 349 the split is 625 persistent to 349
+transient, and at L = 5 it is 125 to 1746. So reading the measured number as peak would understate a
+checkpointed run by more than 10×. `persistent_residuals` now says so in its docstring, and the
+structural test asserts it equals ceil(N/L) rather than pretending it is a memory figure.
+
+**The 40 GB gate therefore cannot be closed here.** It needs a device-memory profile on the H100
+(decision X13). Projection from the measured k, for S03 3D (270×100×100, N = 625, 21.6 MB/field):
+
+| schedule | Godunov (k=349) | WENO5 (k=1050) |
+|---|---|---|
+| none | 4.5 TB | 14.2 TB |
+| two-level, L = 1 | **20.6 GB** | **36.2 GB** |
+| three-level, L = 25 | 8.6 GB | 23.8 GB |
+
+**K4. WENO5 triples k, and that is the answer to J5.** k = 349.2 (Godunov) → **1049.5** (WENO5), a
+7-point stencil against 2. Forward time rises 2.45× as well. The consequence for the M2.4 gate is in
+the table above: two-level goes from 20.6 GB to **36.2 GB against a 40 GB budget — 90 % utilised**.
+That is not a comfortable margin for a projection whose dominant term is modelled rather than
+measured.
+
+So J5 (should WENO5 be the default?) now has a number attached, and the options are no longer
+symmetric: (a) keep Godunov as the default and enable WENO5 per-case where accuracy needs it;
+(b) make WENO5 the default and run three-level checkpointing at the gate (23.8 GB, 2× recompute);
+(c) make WENO5 the default and accept the 90 % margin on two-level. **Recommendation: (a) until the
+H100 profile exists**, because the margin in (c) rests on a modelled term and (b) trades a measured
+2× recompute for accuracy whose scheme-level order is itself an open finding (J2). The accuracy case
+for WENO5 is real (V10 125× better) but it is not yet tied to a product requirement that Godunov
+fails — J6 removed that evidence.
+
+**K5. `m2/rng.py` now implements the contract's RNG keying, which nothing did before.** V18 needs it
+and M3 consumes it (CROSS_MISSION X2, X3): `fold_in(fold_in(PRNGKey(run_seed), step), stage)` then
+`fold_in(cell_id)` per entry. `fold_in` rather than arithmetic on the seed, or (seed+1, step)
+collides with (seed, step+1) and two runs that should be independent share a stream. This adds no
+field to `VelocityRequest`, so the contract fingerprint is unchanged and v0.3 still stands.
+
+**K6. Two M2.4 gate items cannot be closed on this hardware.** Peak memory < 40 GB, and the adjoint
+ratio ≤ 4× warm — both are specified on one H100 and both need the Lambda run decision X13 already
+anticipated. Everything else in the gate is done: V17, V18, 3D V14/V15/V16/V17, and the checkpoint
+schedule derived from measured k. **The milestone cannot be declared complete without that run**, and
+I am not going to report it as complete on projections.
+

@@ -505,6 +505,23 @@ M2.4 gate case (S03 3D, N = 625, 21.6 MB per field) the difference decides the g
 At this k the residuals dominate so heavily that the optimum checkpoints nearly every step and
 recomputes only pairs. **M2.4 must set the checkpoint count from the measured k, not from √N.**
 
+**Amended again (M2.4, finding K2). This section's warning about `jax.checkpoint` is inverted at
+the measured k, and the amendment above did not go far enough.** Writing the two-level peak as
+`N/L + L·k` in the segment length L, the optimum is **L\* = √(N/k)** — and at N = 625, k = 349 that
+is 1.3, i.e. **L = 1**, which *is* remat-on-the-step-function. The text above says that option
+"does not do this — it still stores all N carries, costing as much as the naive figure". Under the
+implicit k = 1 accounting this document was written with, N carries really was the naive cost. At
+k = 349 the naive cost is N·k = 218,000 field-equivalents and remat-on-the-step is N + k = 955.
+The thing §7.4 warns against is the thing the arithmetic now recommends.
+
+Three-level — remat *inside* the segment as well — is the genuinely different option: `N/L + L + k`,
+380 field-equivalents at the gate case, 2.5× smaller again for 2× recompute.
+
+**And the time-for-memory trade runs backwards here** (K1). Measured warm on 2D CPU, the adjoint
+ratio *improves* under checkpointing, because the unchecked tape does not fit and the machine
+swaps: 22.2× → 4.9× at 128²·N=100, and 34.3× → 5.8× at 192²·N=100. This is the premise decision
+I5(a) rests on, now confirmed rather than predicted.
+
 ### 7.5 Precision
 
 fp64 for all level-set fields during M2. fp32 is a later optimisation and must be gated on
