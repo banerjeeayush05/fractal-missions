@@ -144,59 +144,80 @@ def test_the_gradient_is_not_silently_zero_or_nan():
     assert grad["v_iso"] < 0 and grad["v_dir"] < 0
 
 
-@pytest.mark.nightly  # a diagnostic of finding I1, not a gate check: §8.0's fast tier is a budget
-def test_the_remainder_is_quadratic_where_the_quadratic_model_holds(ledger_measure):
-    """Finding I1, pinned: at longer runs the O(h²) regime is a *window*, and B3's h-range overshoots it.
+@pytest.mark.nightly  # a diagnostic of findings I1/I6/I7, not a gate check: §8.0's fast tier is a budget
+def test_the_anchored_window_finds_the_quadratic_regime_at_a_long_run(ledger_measure):
+    """Findings I1, I6 and I7, closed: the long run that B3's fixed h-range could not score.
 
-    B3 set h ∈ [1e-6, 1e-1] at M2.0 against a trivial analytic function. On the real solver the top
-    of that range is outside the quadratic regime: at h = 0.1 a 10 % rate change moves the interface
-    about two cells, which is a large geometric change, so the remainder is governed by higher-order
-    terms rather than by the gradient. A least-squares fit across both regimes lands near 1.7 and
-    the check fails — on a gradient that is demonstrably correct.
+    B3 set h ∈ [1e-6, 1e-1] at M2.0 against a trivial analytic function, and fitted everything in it
+    that cleared the noise floor. On the real solver at 50 steps that fit lands near 1.7 and the
+    check fails on a gradient that is demonstrably correct: at h = 0.1 a 10 % rate change moves the
+    interface about two cells, which is a large geometric change, so the remainder there is governed
+    by higher-order terms and by the kinks in a piecewise-smooth map — not by the gradient.
 
-    This asserts the real claim: over the small-h decades the remainder is O(h²) to two decimals.
-    The V19 canary on this same objective catches a 5 % corruption in every component, so the test
-    still has power; what it lacks at large h is validity.
+    Decision I7 anchors the fit at the measured floor instead. This is the case that motivated it,
+    so this is where it has to be shown to work, and shown not to have been blinded in the process:
+
+    1. the anchored scoring passes, on the same gradient and the same objective;
+    2. the top two decades of B3's range, fitted on their own, score ~1.29 — not merely a degraded
+       slope but outside the band on the *low* side, the signature the scoring reads as "first-order
+       term present: gradient error". So the finding was real and it is the scoring that changed,
+       not the solver;
+    3. a 5 % corruption in a single component is still caught, at this hardest case.
+
+    Point 3 is the obligation that travels with any narrowing of a test window (§11).
+
+    The measured remainder curve for one direction, recorded in the ledger, shows all three regimes
+    at once and is worth reading directly:
+
+        h = 1e-1 … 1e-3   R = 1.6 … 2.6e-3     slope 1.29  kinks and higher-order geometry
+        h = 1e-3 … 3e-7   R = 2.6e-3 … 2.7e-10 slope 2.00  the quadratic regime  <- scored here
+        h < 1e-7          R ≈ 1e-11            slope 0     the fp64 floor
     """
-    import jax.numpy as jnp
-    from jax.flatten_util import ravel_pytree
-
-    from m2.constants import TAYLOR_SLOPE_BAND
-    from m2.verification.gradcheck import _directions, estimate_noise_floor
+    from m2.constants import TAYLOR_SLOPE_BAND, V19_CORRUPTION_FACTOR
+    from m2.verification.canary import corrupt_component
 
     cfg, phi0, material, params, scales = _case(travel=200.0)  # 50 steps, 20 cells of travel
     _validate(cfg, phi0, material, params)
     J = _objective(cfg, phi0, material)
-    x0, unravel = ravel_pytree(params)
-    g = ravel_pytree(reverse_gradient(J, params))[0]
-    Jx = jax.jit(lambda x: J(unravel(x)))
-    J0 = float(Jx(x0))
-    _, floor = estimate_noise_floor(Jx, x0, n_steps=cfg.n_steps)
+    grad = reverse_gradient(J, params)
 
-    direction = jnp.asarray(_directions(KEY, 20, x0, scales)[0])
-    linear = float(jnp.dot(g, direction))
-    hs = 1e-1 * np.logspace(0.0, -5.0, 11)
-    remainder = np.array([abs(float(Jx(x0 + h * direction)) - J0 - h * linear) for h in hs])
+    anchored = taylor_test(J, params, grad, scales=scales, key=KEY, n_steps=cfg.n_steps)
 
-    small_h = (hs <= 1e-2) & (remainder > floor)
-    assert small_h.sum() >= 4
-    slope_small = float(np.polyfit(np.log10(hs[small_h]), np.log10(remainder[small_h]), 1)[0])
+    # The same remainder data, fitted where B3 put the top of its range.
+    hs = np.asarray(anchored.measured["h_swept"])
+    R = np.asarray(anchored.measured["remainder_curve_delta0"])
+    floor = anchored.measured["noise_floor_measured_max"]
+    fit = lambda m: float(np.polyfit(np.log10(hs[m]), np.log10(R[m]), 1)[0])  # noqa: E731
+    top_slope = fit(hs >= 1e-3)  # the two decades below h_max, on their own
+    legacy_slope = fit((hs >= 1e-6) & (R > floor))  # B3's whole range, one least-squares fit
 
-    # The check as configured, over B3's full range and all 20 directions.
-    full = taylor_test(J, params, reverse_gradient(J, params), scales=scales, key=KEY,
-                       n_steps=cfg.n_steps)
+    # The canary, at this case: every component, one at a time.
+    caught = {}
+    for index, name in enumerate(sorted(params)):  # ravel_pytree flattens a dict in key order
+        bad = corrupt_component(grad, index, V19_CORRUPTION_FACTOR)
+        result = taylor_test(J, params, bad, scales=scales, key=KEY, n_steps=cfg.n_steps)
+        caught[name] = {"passed": result.passed, "slope_min": result.measured["slope_min"]}
 
-    ledger_measure.update({"slope_small_h_one_direction": slope_small,
-                           "h_quadratic_regime": [float(hs[small_h].min()), float(hs[small_h].max())],
-                           "full_range_check_passed": full.passed,
-                           "full_range_slope_min": full.measured["slope_min"],
-                           "full_range_slope_max": full.measured["slope_max"],
-                           "n_steps": cfg.n_steps, "travel_cells": 200.0 / cfg.grid.spacing_nm,
-                           "noise_floor": floor, "finding": "I1"})
-
-    # Inside the window where the quadratic model holds, the same gradient satisfies §7.1's band.
     lo, hi = TAYLOR_SLOPE_BAND
-    assert lo <= slope_small <= hi, f"the gradient is wrong, not just the window: slope {slope_small:.3f}"
-    # And over B3's full range it fails, which is the finding. If this ever stops failing, the
-    # h-range question has resolved itself and I1 should be closed.
-    assert not full.passed, "V14 now passes over B3's full range at N=50: re-examine finding I1"
+    ledger_measure.update({
+        "anchored_passed": anchored.passed,
+        "anchored_slope_min": anchored.measured["slope_min"],
+        "anchored_slope_max": anchored.measured["slope_max"],
+        "anchored_window": [anchored.measured["h_window_min"], anchored.measured["h_window_max"]],
+        "top_two_decades_slope_delta0": top_slope,
+        "legacy_b3_whole_range_slope_delta0": legacy_slope,
+        "noise_floor_measured": floor,
+        "noise_floor_b19_model": anchored.measured["noise_floor_b19_model"],
+        "model_over_measured": anchored.measured["noise_floor_model_over_measured"],
+        "corruption_caught": caught,
+        "n_steps": cfg.n_steps, "travel_cells": 200.0 / cfg.grid.spacing_nm,
+        "findings": "I1, I6, I7 (closed by decision I7)"})
+
+    assert anchored.passed, anchored.message
+    assert top_slope < lo, (
+        f"the top two decades of B3's range now score {top_slope:.3f}, inside the band — finding I1 "
+        f"no longer reproduces and the anchored window of decision I7 needs re-justifying")
+    for name, outcome in caught.items():
+        assert not outcome["passed"], (
+            f"a 5 % corruption of d/d{name} passed V14 in the anchored window: the window has been "
+            f"narrowed to the point of blindness (§11)")

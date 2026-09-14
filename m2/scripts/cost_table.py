@@ -25,7 +25,13 @@ DOMAINS = {
     "M01 2D, dx=2 (phase 2)": ((1270, 2000), 3125),
 }
 BUDGETS = (40e9, 80e9)  # decision §7: peak memory under 40 GB on one H100 (80 GB card)
-K_BRACKET = (1, 20, 50)  # residual fields per step: 1 = PRD's implicit accounting; 20/50 = op-count bracket
+# Residual fields per step. k = 1 is the PRD's implicit 'store phi only' accounting; 20 and 50 were
+# the op-count bracket guessed at M2.0. k = 330 is MEASURED on the real solver at M2.3 (finding I4,
+# `tests/test_adjoint_cost.py`), via jax.linearize: the residuals are exactly the constants the
+# linearised part closes over, so this is a count, not an estimate. It is stable in N (349.2, 349.2,
+# 348.7 at N = 25, 50, 100), which is what makes it a per-step factor at all. The bracket is kept
+# alongside it so the M2.0 guess and the M2.3 measurement stay comparable.
+K_BRACKET = (1, 20, 50, 330)
 PASSES_BRACKET = (10, 30)  # field-sized reads+writes per forward step (fused), bracket
 FLOPS_PER_CELL_STEP = 200  # rough: 2 RK stages × ~70 + ~1 amortised reinit iteration × ~50
 
@@ -110,7 +116,8 @@ def main() -> None:
     p("## 2. Peak reverse-mode memory by checkpointing scheme")
     p("")
     p("Stored field-equivalents × field size. *k* = field-sized residuals JAX keeps per step for the")
-    p("backward pass (unknown until M2.3; k=1 is the PRD's implicit 'store φ only' accounting).")
+    p("backward pass. k=1 is the PRD's implicit 'store φ only' accounting; 20 and 50 were the M2.0")
+    p("op-count bracket; **k=330 is measured** on the real solver at M2.3 (finding I4).")
     p("Excludes static fields (material fractions: n_mat fields), the cotangent carry and XLA scratch,")
     p("so it is a lower bound. Recompute = extra forward passes on top of the original forward.")
     p("")

@@ -399,16 +399,44 @@ gradient leaves the first-order term uncancelled, so its remainder goes as h and
 1. No incorrect gradient produces a slope above 2, so there is no upper bound to enforce. Scoring,
 in this order:
 
-    fewer than 3 points survive the noise floor -> FAIL, "insufficient signal"
-    slope < 1.8                                 -> FAIL
-    slope in [1.8, 2.2]                         -> PASS, logged "clean_quadratic"
-    slope > 2.2                                 -> PASS, logged "degenerate_direction"
+    fewer than 3 points in the scored window -> FAIL, "insufficient signal"
+    slope < 1.8                              -> FAIL
+    slope in [1.8, 2.2]                      -> PASS, logged "clean_quadratic"
+    slope > 2.2                              -> PASS, logged "degenerate_direction"
 
-- The five-decade span is a condition on the `clean_quadratic` **classification**, not on pass or
-  fail: an O(h³) remainder reaches the floor sooner and can never span five decades.
-- The noise floor is `max(measured spread, C·√N·eps·max(|J|, 1))` with C = 10, estimated from
-  repeated evaluations of J at fixed θ. Roundoff accumulates over N steps as a random walk, and the
-  √N keeps the floor sensible when N changes between grid refinements.
+**Amended again (decision I7, owner 2026-09-13, findings I1/I6/I7). The slope is fitted in an
+anchored window, not over a fixed h-range.** The sweep still covers eight decades below h_max and
+the whole remainder curve is recorded; the fit is taken over the **two decades immediately above the
+measured noise floor**. On the real solver at 50 steps the curve has three regimes, and only the
+middle one carries information about the gradient:
+
+    h = 1e-1 … 1e-3    slope 1.29   kinks in a piecewise-smooth map, higher-order geometry
+    h = 1e-3 … 3e-7    slope 2.00   the quadratic regime          <- the window sits here
+    h < 1e-7           slope 0      the fp64 floor
+
+The bottom of the usable range is also where the check has the most **power**: a correct gradient's
+remainder is ½h²δᵀHδ and a wrong one's is |ε·g·δ|·h, so the two separate as h falls. Measured, a
+correct gradient scores 1.99–2.29 in the anchored window and a 5 % corruption of any single
+component scores exactly 1.000. Five decades is unattainable on this solver and always was; the old
+rule was written at M2.0 against a trivial analytic function that has no kinks.
+
+- The window is **found, never assumed**: the anchor is the smallest swept h whose remainder still
+  clears 100× the floor. Narrowing a test window is also how a test is blinded, so the rule carries
+  an obligation, discharged at the hardest case in `tests/test_gradients_2d.py`: **the V19 canary
+  must still catch a 5 % corruption in whatever window this produces.**
+- The 100× margin is derived, not tuned: the weakest scored point then carries at most 1 % noise,
+  biasing the fitted slope by about log10(1.01)/span ≈ 0.003, three orders below the ±0.2 band.
+  Calibrated on an exact quadratic, whose slope is 2 by construction: it reads 1.9996–2.0016 at
+  100×, and 1.983–2.005 at 10×.
+- The two-decade span is a condition on the `clean_quadratic` **classification**, not on pass or
+  fail: an O(h³) remainder reaches the floor sooner and can never span the full window.
+- **The noise floor is measured, not modelled** (finding I6). It is the remainder evaluated at a
+  step far below any signal (h ≈ 1e-10), where the true remainder is ~1e-20·|H| and what survives is
+  the rounding error of one evaluation of J. The earlier rule —
+  `max(measured spread, C·√N·eps·max(|J|, 1))` with C = 10 — reads 51–65× high against the real
+  solver, and a conservative threshold for *discarding* data costs roughly two decades of usable
+  window. That model is still computed and recorded beside the measurement on every run, so the two
+  can be compared; it is no longer what excludes points.
 - The ledger records the classification **per direction** and the **degenerate fraction per run**.
   If that fraction jumps between runs, something changed even though everything is green: treat it
   as a finding.
@@ -440,6 +468,22 @@ every one of the N steps, costing as much as the naive figure (decision §7). Bo
 ~750 MB figures above are fp32; fp64 doubles them, and the reference case is now far smaller
 (`reports/dense_cost_table.md`). Griewank & Walther's `revolve` is the
 reference for the optimal schedule; JAX's `remat` policy is sufficient here.
+
+**Amended (finding I4, M2.3). "√N outer segments" is wrong once k is measured, and by 7.4×.**
+Peak memory for two-level checkpointing is `c + (N/c)·k` field-equivalents, where k is the number of
+field-sized residuals JAX keeps per step. That is minimised at **`c = √(N·k)`**, not at `c = √N`.
+The two coincide only at k = 1, the implicit "store φ only" accounting this section was written
+under. k is now measured at **330** — stable in N, so it is a genuine per-step factor — and for the
+M2.4 gate case (S03 3D, N = 625, 21.6 MB per field) the difference decides the gate:
+
+| c | L = N/c | peak | 40 GB gate |
+|---|---|---|---|
+| √N = 25 | 25 | 179 GB | **misses** |
+| √(N·k) = 454 | 2 | 24.1 GB | fits |
+| 25, with step remat (three-level) | 25 | 8.21 GB | fits, 2× recompute |
+
+At this k the residuals dominate so heavily that the optimum checkpoints nearly every step and
+recomputes only pairs. **M2.4 must set the checkpoint count from the measured k, not from √N.**
 
 ### 7.5 Precision
 

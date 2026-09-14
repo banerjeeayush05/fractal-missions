@@ -29,12 +29,19 @@ Revisit only for multi-feature or wafer-scale domains. The reference case is sma
 
 ## Numerical requirements (§7, decisions §4, §7)
 - **V14 (Taylor) is the gate**, scored in two zones over ≥20 directions, each passing on its own:
-  fewer than 3 points above the noise floor is FAIL ("insufficient signal"); slope < 1.8 is FAIL;
+  fewer than 3 points in the window is FAIL ("insufficient signal"); slope < 1.8 is FAIL;
   [1.8, 2.2] passes as `clean_quadratic`; above 2.2 passes as `degenerate_direction`. There is no
   upper bound to enforce — a wrong gradient leaves the first-order term uncancelled and tends to
-  slope 1. Five decades is a condition on the *clean_quadratic* label, not on pass/fail. The floor
-  is max(measured spread, 10·√N·eps·max(|J|,1)). The ledger records the classification per
-  direction and the degenerate fraction per run: a jump in that fraction is a finding.
+  slope 1. The ledger records the classification per direction and the degenerate fraction per run:
+  a jump in that fraction is a finding.
+- **The slope is fitted in an ANCHORED WINDOW** (decision I7): sweep 8 decades, record the whole
+  curve, fit the 2 decades immediately above the **measured** floor. The solver's map is piecewise
+  smooth, so the top of the range is not quadratic (slope 1.29 at 50 steps) and says nothing about
+  the gradient; the bottom is where correct (½h²δᵀHδ) and wrong (|ε·g·δ|·h) separate most. The
+  floor is measured at h ≈ 1e-10, not modelled — B19's C·√N·eps·|J| reads 51–65× high and each
+  factor of 10 in a discard threshold costs a decade of window. Two decades is a condition on the
+  *clean_quadratic* label, not on pass/fail. **Obligation: any change to the window must be shown
+  to leave the V19 canary catching 5 % corruptions** — that test is the reason it is not blinding.
 - **Parameter scales are required**, not optional: δ_i ∝ max(|θ_i|, scale_i). A parameter sitting
   at 1e-12 would otherwise get a 1e-12 perturbation and report a pass having probed nothing.
 - **V15 and V16 are transpose checks, not derivative checks.** JAX builds reverse mode by

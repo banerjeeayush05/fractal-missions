@@ -16,7 +16,8 @@ Against the decision §2 reference cases, with N derived from the CFL target (0.
 ## 2. Peak reverse-mode memory by checkpointing scheme
 
 Stored field-equivalents × field size. *k* = field-sized residuals JAX keeps per step for the
-backward pass (unknown until M2.3; k=1 is the PRD's implicit 'store φ only' accounting).
+backward pass. k=1 is the PRD's implicit 'store φ only' accounting; 20 and 50 were the M2.0
+op-count bracket; **k=330 is measured** on the real solver at M2.3 (finding I4).
 Excludes static fields (material fractions: n_mat fields), the cotangent carry and XLA scratch,
 so it is a lower bound. Recompute = extra forward passes on top of the original forward.
 
@@ -50,6 +51,16 @@ so it is a lower bound. Recompute = extra forward passes on top of the original 
 | two-level, L tuned to k | 1× | 81.4 MB | 8.14 GB | 432 MB | 86.4 GB | 16.2 GB |
 | three-level | 2× | 21.6 MB | 2.16 GB | 105 MB | 20.9 GB | 3.29 GB |
 
+### k = 330
+
+| Scheme | recompute | S03 2D, dx=10 | S03 3D, dx=10 (M2.4 gate) | S03 2D, dx=5 (V6/V7) | S03 3D, dx=5 | M01 2D, dx=2 (phase 2) |
+|---|---:|---:|---:|---:|---:|---:|
+| no checkpointing | 0× | 44.5 GB | 4.46 TB | 356 GB | 71.3 TB | 21 TB |
+| remat step fn only | 1× | 206 MB | 20.6 GB | 1.37 GB | 273 GB | 70.2 GB |
+| two-level √N | 1× | 1.79 GB | 179 GB | 10 GB | 2 TB | 377 GB |
+| two-level, L tuned to k | 1× | 241 MB | 24.1 GB | 1.12 GB | 225 GB | 47.5 GB |
+| three-level | 2× | 82.1 MB | 8.21 GB | 346 MB | 69.3 GB | 8.98 GB |
+
 ## 3. Largest k that fits a memory budget
 
 | Domain | Budget | two-level, L tuned: k ≤ | three-level: k ≤ |
@@ -77,9 +88,6 @@ Datasheet peaks are nominal and not re-verified here.
 | A100 80GB SXM | 9.7 | 2.04 | 80 | 1.06 µs–3.18 µs | 106 µs–318 µs | 4.24 µs–12.7 µs | 847 µs–2.54 ms | 99.6 µs–299 µs | 66.2 ms–199 ms |
 | L40S | 1.43 | 0.864 | 48 | 3.78 µs–7.5 µs | 378 µs–750 µs | 15.1 µs–30 µs | 3.02 ms–6 ms | 355 µs–706 µs | 236 ms–469 ms |
 | RTX 4090 | 1.29 | 1.01 | 24 | 4.19 µs–6.43 µs | 419 µs–643 µs | 16.7 µs–25.7 µs | 3.35 ms–5.14 ms | 394 µs–605 µs | 262 ms–402 ms |
-| this machine CPU (measured BW) | n/a | 0.0212 | 8 | 102 µs–306 µs | 10.2 ms–30.6 ms | 408 µs–1.22 ms | 81.6 ms–245 ms | 9.6 ms–28.8 ms | 6.38 s–19.1 s |
-
-Measured on this machine: one fused fp64 pass over the gate field → 21.2 GB/s effective (jitted `a*x+b`, 20 reps). CPU fp64 flop peak not measured; row is bandwidth-only.
 
 ## 5. Reading the table
 

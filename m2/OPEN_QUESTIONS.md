@@ -645,7 +645,10 @@ pre-registration rule: selectivity is fitted on `calibrate` cases only.
 ## M2.3 findings
 
 **I1. The Taylor h-range set at M2.0 overshoots the quadratic regime on the real solver.**
-**Needs an owner decision: it changes the protocol B3 fixed.**
+**CLOSED by decision I7 (owner, 2026-09-13).** The `h_max` cap proposed below was implemented as
+`gradcheck.h_max_for_interface_motion` and is retained as a reusable rule, but it is *not* what
+scores V14: the anchored window of I7 supersedes it, because it locates the same regime by
+measurement instead of by a model of the interface motion. V14 now passes at N = 50.
 
 V14 passes on a 13-step run and **fails on a 50-step run** — on a gradient that is demonstrably
 correct. Local slopes over 3-point windows, from large h to small:
@@ -679,6 +682,12 @@ reinitialising less often to save time.
 the window at production scale may be under three decades. This needs measuring before the M2.4 and
 M2.7 gates depend on it — not discovering there.
 
+*Status after I7:* partly defused, not closed. The anchored window rides the floor wherever it is,
+so a floor that rises with N moves the window rather than shrinking it — the failure mode is now the
+window colliding with the kink scale from below, not with the floor. Both bounds still need
+measuring at N = 625 before M2.4. The harness reports `h_window_min`/`h_window_max` and both floor
+figures on every run, so the collision will be visible in the ledger before it is fatal.
+
 **I4. k is measured: ≈ 330 field-equivalents per step, not the 1–50 bracketed at M2.0.**
 Measured directly rather than estimated: `jax.linearize` partially evaluates the function and the
 residuals are exactly the constants the linearised part closes over. The value is stable in N
@@ -686,16 +695,31 @@ residuals are exactly the constants the linearised part closes over. The value i
 about 40 % of it — k falls to 210 with it switched off, which is the memory price of the smoothing
 finding I2 describes.
 
-What it implies for the M2.4 gate case (S03 in 3D, 21.6 MB per fp64 field, N = 625):
+What it implies for the M2.4 gate case (S03 in 3D, 21.6 MB per fp64 field, N = 625), from the
+regenerated `reports/dense_cost_table.md`:
 
-| scheme | memory | vs the 40 GB gate |
-|---|---|---|
-| no checkpointing | ~4.5 TB | impossible |
-| two-level √N | **~20 GB** | fits, with about 2× margin |
-| three-level | ~8 GB | fits comfortably, at 2× recompute |
+| scheme | checkpoints c, segment L | memory | vs the 40 GB gate |
+|---|---|---|---|
+| no checkpointing | — | 4.46 TB | impossible |
+| remat step fn only (§7.4 literal) | — | 20.6 GB | fits, but stores all N carries |
+| **two-level, c = √N = 25** | c=25, L=25 | **179 GB** | **does not fit** |
+| two-level, c tuned to k | c=454, L=2 | **24.1 GB** | fits |
+| three-level | c=25, L=25, step remat | 8.21 GB | fits, at 2× recompute |
 
-So the 40 GB gate is achievable with two-level checkpointing, now on a measured number rather than
-a guess. `reports/dense_cost_table.md` should be regenerated with k = 330 before M2.4.
+**Correction to my earlier report, and it matters for M2.4.** I wrote "~20 GB under two-level
+checkpointing". That was the *continuous optimum* 2√(N·k)·field = 19.6 GB; the honest discrete
+number is 24.1 GB. More importantly it is the optimum for a checkpoint count **tuned to k**, which
+is not what "√N checkpointing" means. Peak memory for two-level is `c + (N/c)·k` field-equivalents,
+minimised at `c = √(N·k)`, not at `c = √N`. At k = 1 those coincide, which is why the distinction
+never surfaced at M2.0 — the PRD's §7.4 phrasing was written under the implicit k = 1 accounting.
+
+At the measured k = 330 they differ by 7.4×, and the naive √N split **misses the 40 GB gate at
+179 GB**. The tuned optimum puts c at 454 of 625 steps: at this k the residuals dominate so heavily
+that you checkpoint nearly every step and recompute only pairs.
+
+So the gate is still reachable, but **M2.4 must choose the checkpoint count from measured k, not
+from √N**, and the cheapest compliant option is three-level at 8.21 GB if the 2× recompute is
+acceptable. Flagged for the owner as a change in what M2.4 has to build.
 
 **I5. The adjoint cost ratio misses the M2.3 target, and the reason is memory.**
 **Needs an owner decision.** Measured warm, compile excluded, 2D unchecked:
@@ -723,14 +747,22 @@ checkpointed run on the H100; (b) reduce k first; (c) keep the 3× target and tr
 to be fixed before M2.4. Recommendation: (a), because the number the product cares about is the
 checkpointed ratio on the gate hardware, and this laptop measurement cannot stand in for it.
 
-**I6. The noise-floor model is ~65× conservative, and that costs two decades.**
+**I6. The noise-floor model is ~65× conservative, and that costs two decades. RESOLVED — the floor
+is now measured (decision I7, owner 2026-09-13).**
 B19 sets the floor at `10·√N·eps·|J|`, which for the M2.3 case gives 1.66e-9. Measured — by
 evaluating the remainder at a step far below any real signal — the floor is **2.55e-11**. The model
 is a safe upper bound, but paying 65× in a quantity that enters as a *threshold for discarding
 data* costs about two decades of usable window. Measuring it costs three extra evaluations.
 
+*Implemented* as `gradcheck.measure_noise_floor`, per direction, at h = 1e-10 where the true
+remainder is ~1e-20·|H|. B19's model is still computed on every run and recorded beside the
+measurement (`noise_floor_b19_model`, `noise_floor_model_over_measured`), so the two stay
+comparable — on the M2.3 case the ratio is 51×. The measured floor is never allowed below one
+rounding of J itself, so a remainder that cancels to zero by luck cannot admit noise as signal.
+
 **I7. Five decades of clean quadratic behaviour is not attainable on this solver, for a structural
-reason.** **Needs an owner decision; supersedes the h_max proposal in I1.**
+reason.** **APPROVED AND IMPLEMENTED (owner, 2026-09-13: "I will go with your call"); supersedes
+the h_max proposal in I1.** PRD §7.1 amended; `CLAUDE.md` numerical requirements updated.
 
 Sweeping one direction from h = 1e-2 down to 1e-10 on the N = 50 case, local slopes are:
 
@@ -761,6 +793,37 @@ window until everything passes.
 
 Everything else stays: ≥20 directions, every direction passing on its own, the two-zone scoring of
 B15/B21. What changes is where the window sits and that the floor is measured rather than modelled.
+
+### I7 as implemented, and what it cost to check
+
+The sweep was widened to 8 decades / 17 points so the floor is inside the swept range rather than
+assumed; the anchor is the smallest swept h whose remainder clears **100×** the measured floor, and
+the fit runs 2 decades up from there. The margin is derived, not tuned: at 100× the weakest scored
+point carries at most 1 % noise, biasing the slope by ~log10(1.01)/span ≈ 0.003. Calibrated against
+an exact quadratic, whose slope is 2 by construction — 1.9996–2.0016 at 100×, 1.983–2.005 at 10×.
+That calibration is now a permanent test (`test_exact_quadratic_has_slope_two`) with the bound
+*computed from the constants* rather than written down, so loosening the margin fails it.
+
+The full remainder curve on the M2.3 case, at N = 50, with the three regimes visible at once:
+
+| h | 1e-1 … 1e-3 | 1e-3 … 3e-7 | < 1e-7 |
+|---|---|---|---|
+| slope | **1.29** | **2.00** | 0 (floor ≈ 1.4e-11) |
+| what it is | kinks, higher-order geometry | the quadratic regime | fp64 |
+
+The window landed at **[3.2e-7, 3.2e-4]** — inside the quadratic regime, with a decade to spare at
+the top. V14 at N = 50 now reads 17 `clean_quadratic` + 3 `degenerate_direction`, all passing.
+
+**The anti-gaming check, which is the part that matters.** A narrower window is a weaker test unless
+it is shown not to be, so `test_the_anchored_window_finds_the_quadratic_regime_at_a_long_run` asserts
+three things at the hardest case rather than the easiest: the anchored scoring passes; the top two
+decades fitted alone score 1.29, i.e. **below** the band, which is the same signature the scoring
+reads as "first-order term present" — so the finding is real and reproduces on every nightly run;
+and a 5 % corruption of **each** gradient component in turn is still caught. If a future change
+narrows the window into blindness, that third assertion fails before the gate turns green.
+
+Cost: 20 evaluations of J per direction instead of 11, i.e. V14 roughly doubled. Nothing was moved
+between tiers to pay for it.
 
 Note this supersedes I1's h_max rule, which was derived for the wrong bound: it caps interface
 motion at 0.1 cell, but the kinks turn out to be far finer than that — the clean region begins near

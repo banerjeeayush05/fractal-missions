@@ -15,13 +15,33 @@ derivative against the function itself; V14a/V14b/V14c (analytic sensitivities) 
 the first-order term uncancelled, so its remainder goes as h and the slope tends to 1. No incorrect
 gradient produces a slope above 2, so there is no upper bound to enforce:
 
-    fewer than 3 points above the noise floor -> FAIL, "insufficient signal"
-    slope < 1.8                               -> FAIL
-    slope in [1.8, 2.2]                       -> PASS, "clean_quadratic"
-    slope > 2.2                               -> PASS, "degenerate_direction"
+    fewer than 3 points in the scored window -> FAIL, "insufficient signal"
+    slope < 1.8                              -> FAIL
+    slope in [1.8, 2.2]                      -> PASS, "clean_quadratic"
+    slope > 2.2                              -> PASS, "degenerate_direction"
 
-The five-decade span is a condition on the *clean_quadratic* classification, not on pass or fail:
-an O(h³) remainder reaches the floor sooner and can never span five decades, so scoring it
+**Where the slope is measured** (decision I7, 2026-09-13, replacing the fixed five-decade fit). The
+sweep still runs the full eight decades and the whole curve is recorded, but the fit is *anchored at
+the bottom*: the floor is measured, and the window is the two decades immediately above it. The
+reason is not convenience. As h → 0 a correct gradient's remainder is ½h²δᵀHδ and a wrong one's is
+|ε·g·δ|·h, so the bottom of the usable range is where the two are furthest apart and the test has
+the most power. At the top the solver's map is only piecewise smooth — a large step straddles a kink
+in the upwind stencil or moves a sub-cell crossing past a node — and the local slope there says
+nothing about the gradient. Measured on the real solver: a correct gradient scores 1.99–2.29 in the
+anchored window while a 5 % corruption in any single component scores exactly 1.000.
+
+Narrowing a window is also how a test is blinded, so the rule carries an obligation, discharged in
+``tests/test_v19_canary.py`` and ``tests/test_v14_window.py``: the V19 canary must still catch a 5 %
+corruption in whatever window this produces, and the window must be *found*, never assumed.
+
+**The floor is measured, not modelled** (finding I6). B19's √N·eps·|J| formula, taken with its
+safety factor C = 10, reads ~65× high against the real solver, and a conservative threshold for
+*discarding* data costs about two decades of usable window. The remainder evaluated at a step far
+below any signal is what arithmetic noise is left, so that is what the floor now is; B19's model is
+still computed and recorded beside it, so the two can be compared on every run.
+
+The two-decade span is a condition on the *clean_quadratic* classification, not on pass or fail:
+an O(h³) remainder reaches the floor sooner and can never span the full window, so scoring it
 span-first would fail a correct gradient. Every direction's classification, and the degenerate
 fraction for the run, go into the ledger: if that fraction jumps between runs, something changed
 even though everything is green.
@@ -49,6 +69,9 @@ from jax.flatten_util import ravel_pytree
 import m2  # noqa: F401  (enables fp64)
 from m2.constants import (
     DTYPE,
+    TAYLOR_ANCHOR_DECADES,
+    TAYLOR_FLOOR_MARGIN,
+    TAYLOR_FLOOR_PROBE_H,
     TAYLOR_H_MAX,
     TAYLOR_MIN_DECADES,
     TAYLOR_MIN_DIRECTIONS,
@@ -57,6 +80,7 @@ from m2.constants import (
     TAYLOR_NOISE_FLOOR_C,
     TAYLOR_NOISE_FLOOR_REPEATS,
     TAYLOR_SLOPE_BAND,
+    TAYLOR_SWEEP_DECADES,
     V15_MIN_DIRECTIONS,
     V15_RTOL,
     V16_MIN_PAIRS,
@@ -109,6 +133,30 @@ def estimate_noise_floor(J: Callable[[jax.Array], Any], x0: jax.Array, *, n_step
     return spread, max(spread, float(roundoff))
 
 
+def measure_noise_floor(J: Callable[[jax.Array], Any], x0: jax.Array, direction: jax.Array,
+                        J0: float, linear: float, *, probe_h: float = TAYLOR_FLOOR_PROBE_H,
+                        n_probes: int = 3) -> float:
+    """The Taylor remainder where no signal is left: arithmetic noise, measured (finding I6).
+
+    At h = 1e-10 the true remainder ½h²δᵀHδ is ~1e-20·|H| — utterly negligible — while the two terms
+    that cancel to produce it are each of order |J|. What survives is the rounding error of one
+    evaluation of J, which is exactly the quantity a point must clear to carry information.
+
+    The alternative, ``estimate_noise_floor``, *models* this as C·√N·eps·|J| (decision B19). Both
+    are reported; the measured one is what excludes points, because the model reads ~65× high on the
+    real solver and every factor of 10 in a discard threshold costs a decade of usable window.
+
+    Measuring per direction rather than once per run is deliberate even though the leading term is
+    direction-independent: it costs three evaluations, and a direction whose J is unusually badly
+    conditioned then gets its own floor instead of the run's average.
+    """
+    hs = probe_h * np.logspace(0.0, -1.0, n_probes)
+    R = np.array([abs(float(J(x0 + h * direction)) - J0 - h * linear) for h in hs])
+    # Never below one rounding of J itself: a remainder can cancel to exactly zero by luck, and a
+    # floor of zero would admit points that are pure noise.
+    return max(float(np.max(R)), EPS * max(abs(J0), 1.0))
+
+
 # --- V14 ------------------------------------------------------------------------------------
 
 
@@ -120,20 +168,30 @@ def taylor_test(
     scales: PyTree,
     key: jax.Array,
     n_directions: int = TAYLOR_MIN_DIRECTIONS,
-    decades: float = TAYLOR_MIN_DECADES,
+    decades: float = TAYLOR_SWEEP_DECADES,
     n_h: int = TAYLOR_N_H,
     h_max: float = TAYLOR_H_MAX,
     slope_band: tuple[float, float] = TAYLOR_SLOPE_BAND,
+    window_decades: float = TAYLOR_ANCHOR_DECADES,
+    floor_margin: float = TAYLOR_FLOOR_MARGIN,
     noise_floor: float | None = None,
     n_steps: int = 1,
 ) -> CheckResult:
-    """V14 (§7.1, decisions §4 and B15/B21): R(h) = |J(θ+hδ) − J(θ) − h⟨g, δ⟩| must fall as O(h²)."""
+    """V14 (§7.1, decisions §4, B15/B21 and I7): R(h) = |J(θ+hδ) − J(θ) − h⟨g, δ⟩| falls as O(h²).
+
+    The sweep covers ``decades`` decades below ``h_max`` and the whole curve is recorded; the slope
+    is fitted over the ``window_decades`` immediately above the measured noise floor, where the gap
+    between a correct and an incorrect gradient is widest. See the module docstring for why.
+    """
     if n_directions < TAYLOR_MIN_DIRECTIONS:
         raise ValueError(f"n_directions={n_directions} < {TAYLOR_MIN_DIRECTIONS} (PRD §7.1)")
     if decades < TAYLOR_MIN_DECADES:
         raise ValueError(f"decades={decades} < {TAYLOR_MIN_DECADES} (PRD §7.1)")
     if n_h < TAYLOR_N_H:
         raise ValueError(f"n_h={n_h} < {TAYLOR_N_H} (OPEN_QUESTIONS B3)")
+    if window_decades < TAYLOR_ANCHOR_DECADES:
+        raise ValueError(f"window_decades={window_decades} < {TAYLOR_ANCHOR_DECADES}: a narrower "
+                         f"window is fitted to fewer points and is looser, not stricter (§11, I7)")
     lo, hi = slope_band
     if lo < TAYLOR_SLOPE_BAND[0] or hi > TAYLOR_SLOPE_BAND[1] or lo >= hi:
         raise ValueError(f"slope_band={slope_band} is looser than {TAYLOR_SLOPE_BAND} (PRD §7.1, §11)")
@@ -144,37 +202,61 @@ def taylor_test(
         raise ValueError(f"gradient has {g.size} components, parameters have {x0.size}")
     Jx = jax.jit(lambda x: J(unravel(x)))
     J0 = float(Jx(x0))
-    spread, floor = ((float("nan"), noise_floor) if noise_floor is not None
-                     else estimate_noise_floor(Jx, x0, n_steps=n_steps))
+    spread, model_floor = estimate_noise_floor(Jx, x0, n_steps=n_steps)  # B19's model, for comparison
     hs = h_max * np.logspace(0.0, -float(decades), n_h)
+    step_decades = float(decades) / max(n_h - 1, 1)
     deltas = _directions(key, n_directions, x0, scales)
 
     slopes: list[float] = []
     classes: list[str] = []
     failures: list[str] = []
     kept_counts: list[int] = []
+    floors: list[float] = []
+    windows: list[list[float]] = []
+    curves: list[list[float]] = []
     for i, d in enumerate(deltas):
         dd = jnp.asarray(d)
         lin = float(jnp.dot(g, dd))
         Jh = np.array([float(Jx(x0 + h * dd)) for h in hs])
         R = np.abs(Jh - J0 - hs * lin)
-        keep = np.isfinite(R) & (R > floor)
+        curves.append([float(v) for v in R])
+        floor = (noise_floor if noise_floor is not None
+                 else measure_noise_floor(Jx, x0, dd, J0, lin))
+        floors.append(float(floor))
+
+        # Anchor: the smallest step whose remainder still clears the floor by the margin. Scoring
+        # starts there and reaches `window_decades` upward — the window is found, not assumed.
+        above = np.isfinite(R) & (R > floor_margin * floor)
+        if above.sum() < TAYLOR_MIN_POINTS_ABOVE_FLOOR:
+            kept_counts.append(int(above.sum()))
+            windows.append([float("nan"), float("nan")])
+            slopes.append(float("nan"))
+            classes.append("insufficient_signal")
+            failures.append(f"δ{i}: insufficient signal — {int(above.sum())} of {n_h} points clear "
+                            f"{floor_margin:g}× the measured floor {floor:.3e}; raise h_max, lower "
+                            f"the noise, or use an objective with curvature (linear functionals "
+                            f"belong in V14a–V14c)")
+            continue
+        h_anchor = float(hs[above].min())
+        keep = above & (hs <= h_anchor * 10.0**window_decades)
         kept_counts.append(int(keep.sum()))
+        windows.append([h_anchor, float(hs[keep].max())])
         if keep.sum() < TAYLOR_MIN_POINTS_ABOVE_FLOOR:
             slopes.append(float("nan"))
             classes.append("insufficient_signal")
-            failures.append(f"δ{i}: insufficient signal — {int(keep.sum())} points above the noise "
-                            f"floor {floor:.3e}; raise h_max, lower the noise, or use an objective "
-                            f"with curvature (linear functionals belong in V14a–V14c)")
+            failures.append(f"δ{i}: insufficient signal — {int(keep.sum())} points in the window "
+                            f"[{h_anchor:.2e}, {h_anchor * 10.0**window_decades:.2e}] above the "
+                            f"measured floor {floor:.3e}")
             continue
         slope = float(np.polyfit(np.log10(hs[keep]), np.log10(R[keep]), 1)[0])
         span = float(np.log10(hs[keep].max()) - np.log10(hs[keep].min()))
         slopes.append(slope)
         if slope < lo:
             classes.append("first_order_error")
-            failures.append(f"δ{i}: slope {slope:.3f} < {lo} — first-order term present: gradient error")
+            failures.append(f"δ{i}: slope {slope:.3f} < {lo} over h ∈ [{h_anchor:.2e}, "
+                            f"{float(hs[keep].max()):.2e}] — first-order term present: gradient error")
         elif slope <= hi:
-            classes.append(CLEAN if span >= decades else NARROW)
+            classes.append(CLEAN if span >= window_decades - step_decades else NARROW)
         else:
             classes.append(DEGENERATE)
 
@@ -188,12 +270,26 @@ def taylor_test(
         "slope_min": float(finite.min()) if finite.size else "nan",
         "slope_max": float(finite.max()) if finite.size else "nan",
         "n_directions": n_directions,
-        "h_range": [float(hs[-1]), float(hs[0])],
+        "h_range_swept": [float(hs[-1]), float(hs[0])],
+        "h_window_min": min(w[0] for w in windows) if windows else "nan",
+        "h_window_max": max(w[1] for w in windows) if windows else "nan",
+        "window_decades": window_decades,
+        "floor_margin": floor_margin,
         "n_h": n_h,
-        "noise_floor": floor,
+        "noise_floor_measured_min": float(np.min(floors)) if floors else "nan",
+        "noise_floor_measured_max": float(np.max(floors)) if floors else "nan",
+        "noise_floor_b19_model": model_floor,
+        "noise_floor_model_over_measured": (model_floor / float(np.max(floors))
+                                            if floors and max(floors) > 0 else "nan"),
         "noise_spread": spread,
         "n_steps": n_steps,
         "points_kept_min": int(min(kept_counts)),
+        "scoring": "anchored window: fit the decades above the MEASURED floor (decision I7)",
+        # The whole sweep for one direction, so the three-regime structure of finding I7 is visible
+        # in the ledger rather than only in the fitted number: erratic above the kink scale, clean
+        # quadratic through the window, flat at the floor.
+        "h_swept": [float(h) for h in hs],
+        "remainder_curve_delta0": curves[0] if curves else [],
         "J0": J0,
     }
     msg = "; ".join(failures[:5]) + (" …" if len(failures) > 5 else "")

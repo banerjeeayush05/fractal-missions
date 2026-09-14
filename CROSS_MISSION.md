@@ -52,8 +52,19 @@ budget and the 10²–10³ s forward estimate should be recomputed before M3.6.
 M3 L374–379: the backward pass of a single checkpointed call still records its full tape, ~10¹⁰
 values ≈ 80 GB in fp64 by M3's own count. It needs ray batching with remat, or the analytic
 hit-point derivative of §5.2 (see X7). Mitigating news from M2: with case S03 two-level
-checkpointing fits the memory gate comfortably, so M2 recomputes the forward **once**, not twice —
-M3's velocity model is therefore evaluated twice per gradient, not three times.
+checkpointing fits the memory gate, so M2 recomputes the forward **once**, not twice — M3's velocity
+model is therefore evaluated twice per gradient, not three times.
+
+**Updated at M2.3 (finding I4): M2's residual factor k is now measured at 330 per step, not the 1–50
+bracketed at M2.0, and that changes the advice M3 should take from this.** Two-level peak memory is
+`c + (N/c)·k`, minimised at `c = √(N·k)` — 24.1 GB for the S03 3D gate case, against 179 GB for the
+`c = √N` split the PRD originally specified. The forward-once conclusion survives, but with a
+caveat M3 should hear now rather than at integration: **M3's velocity model adds to k directly**, and
+M2's k is already large enough that the optimal schedule checkpoints nearly every step (L = 2). A
+velocity model contributing residuals comparable to M2's own would push the two-level optimum to the
+point where three-level (2× recompute, so the model is evaluated three times per gradient) becomes
+the only option that fits. So X5's ray batching is not merely an M3-side memory concern — it sets
+whether M2 can stay at 2× forward evaluations. Worth a number from M3 before the contract freeze.
 
 **X6. V18 restated: bitwise applies to the RNG, not the trajectory.** Status: **decided (M2 §8).**
 RNG keys and sampled values must be bitwise identical on recompute; the trajectory must agree to
@@ -71,11 +82,31 @@ because the §5.2 hit-point derivative will likely be a custom rule. Executable 
 **X8. Taylor scoring is now a two-zone rule, and M3's V31 adopts it.** Status: **decided (M2 B15/B21).**
 Fewer than 3 points above the noise floor → FAIL "insufficient signal"; slope < 1.8 → FAIL;
 [1.8, 2.2] → PASS `clean_quadratic`; > 2.2 → PASS `degenerate_direction`. There is no upper bound to
-enforce: a wrong gradient tends to slope 1. Five decades conditions the label, not the verdict. The
-floor is max(measured spread, 10·√N·eps·max(|J|,1)) — and M3's spread is real Monte Carlo noise,
-which is what the mechanism was built for. Concrete case in M3: V27's Γ = (2π/3)L₀ (L462) is linear
-in L₀. **M2 passing what M3 fails would waste a day on bookkeeping**, so raise this with the M3
-owner. M3's V35 should also gain the degeneracy case M2's V19 did.
+enforce: a wrong gradient tends to slope 1. The span conditions the label, not the verdict. Concrete
+case in M3: V27's Γ = (2π/3)L₀ (L462) is linear in L₀. **M2 passing what M3 fails would waste a day
+on bookkeeping**, so raise this with the M3 owner. M3's V35 should also gain the degeneracy case
+M2's V19 did.
+
+**Amended at M2.3 (decision I7, owner 2026-09-13) — V31 inherits this too, and for M3 it matters
+more, not less.** The slope is fitted in a window **anchored at the measured noise floor**: sweep 8
+decades, record the whole remainder curve, fit the 2 decades immediately above the floor. Two
+changes, both of which land differently in M3:
+
+- **The floor is measured, not modelled.** B19's `10·√N·eps·max(|J|,1)` reads 51–65× high against
+  M2's solver, and in a threshold that *discards* data that costs ~2 decades of window. M3's floor
+  is real Monte Carlo noise, so M3 must measure it — the mechanism was built for exactly that case,
+  but a model calibrated on M2's deterministic roundoff would be the wrong shape entirely. M3's
+  floor also scales as 1/√(samples), which is a knob M2 does not have: **M3 can buy window with
+  samples**, and should expect to.
+- **Five decades is unattainable and the requirement is gone.** M2's map is piecewise smooth — the
+  top of the h-range scores 1.29, not 2 — so the clean window is ~2.5–3 decades bounded above by the
+  kink spacing. M3 adds its own kinks (visibility, shadowing) and its own noise, so V31 should
+  expect a *narrower* window than M2's, not a wider one, and should not be written against a
+  five-decade assumption.
+
+**The obligation travels with the rule**: any narrowing of a test window must be shown to leave the
+corrupted-gradient canary catching 5 % corruptions. M2 discharges this at its hardest case
+(`tests/test_gradients_2d.py`); **V35 must do the same for V31, or V31's pass means nothing.**
 
 **X9. Etch sign and orientation are fixed.** Status: **decided (M2 §1), implemented in M2.**
 Velocity models return an **etch rate R** in nm/s: positive removes material. M2 advects

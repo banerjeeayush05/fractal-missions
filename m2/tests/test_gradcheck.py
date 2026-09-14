@@ -34,23 +34,40 @@ def test_correct_gradient_passes_all_three():
     assert 1.95 < t.measured["slope_min"] <= t.measured["slope_max"] < 2.05
     assert t.measured["classifications"] == [CLEAN] * 20
     assert t.measured["degenerate_fraction"] == 0.0
-    assert t.measured["h_range"][1] / t.measured["h_range"][0] == pytest.approx(1e5)
+    # The sweep spans the full eight decades; the scored window is two of them, found at the
+    # bottom rather than assumed (decision I7).
+    assert t.measured["h_range_swept"][1] / t.measured["h_range_swept"][0] == pytest.approx(1e8)
+    assert t.measured["h_window_max"] / t.measured["h_window_min"] <= 1e2 + 1e-9
+    assert t.measured["h_window_min"] > 0.0
     assert forward_reverse_test(A.objective, th, g, scales=A.scales(), key=KEY).passed
     assert dot_product_test(A.vector_map, th, reverse_vjp(A.vector_map, th), scales=A.scales(),
                             key=KEY).passed
 
 
 def test_exact_quadratic_has_slope_two():
+    """An exact quadratic has remainder ½h²δᵀHδ with no higher terms, so the slope is 2 by
+    construction — which makes it the calibration case for the anchored window (decision I7).
+
+    The tolerance is the bias the window itself admits, derived rather than fitted: the weakest
+    scored point sits at TAYLOR_FLOOR_MARGIN times the noise floor, so it carries 1/M of noise and
+    shifts the fit by about log10(1 + 1/M) / span. That is 0.003 at M = 100 over two decades. If
+    this ever needs loosening, the window has drifted into the floor and the margin is wrong.
+    """
+    from m2.constants import TAYLOR_ANCHOR_DECADES, TAYLOR_FLOOR_MARGIN
+
     th = {"x": jnp.array([0.3, -1.2, 2.0])}
     J = lambda t: jnp.sum(t["x"] ** 2) + t["x"][0] * t["x"][1]  # noqa: E731
     r = taylor_test(J, th, reverse_gradient(J, th), scales=th, key=KEY)
-    assert r.passed and abs(r.measured["slope_min"] - 2.0) < 1e-3
+    bias = np.log10(1.0 + 1.0 / TAYLOR_FLOOR_MARGIN) / (TAYLOR_ANCHOR_DECADES - 0.5)
+    assert r.passed, r.message
+    assert abs(r.measured["slope_min"] - 2.0) < bias, r.measured["slopes"]
+    assert abs(r.measured["slope_max"] - 2.0) < bias, r.measured["slopes"]
 
 
 @pytest.mark.parametrize(
     "kwargs",
     [{"n_directions": 19}, {"decades": 4}, {"n_h": 5}, {"slope_band": (1.5, 2.2)},
-     {"slope_band": (1.8, 2.5)}],
+     {"slope_band": (1.8, 2.5)}, {"window_decades": 1.0}],
 )
 def test_taylor_protocol_cannot_be_loosened(kwargs):
     th = A.theta0()

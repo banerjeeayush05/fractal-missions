@@ -56,14 +56,33 @@ TAYLOR_SLOPE_BAND = (1.8, 2.2)
 # above 2, so there is no upper bound to enforce. Above the band is degenerate, and passes.
 TAYLOR_DEGENERATE_SLOPE = 2.2  # > band upper bound: pass, logged as degenerate_direction
 TAYLOR_MIN_POINTS_ABOVE_FLOOR = 3  # fewer than this above the floor is "insufficient signal"
-TAYLOR_H_MAX = 1e-1  # provisional: OPEN_QUESTIONS B3
-TAYLOR_N_H = 11  # provisional: B3 (2 points per decade over 5 decades)
+TAYLOR_H_MAX = 1e-1  # top of the sweep; the scored window is anchored at the bottom (I7)
+TAYLOR_N_H = 17  # half-decade steps from H_MAX down, wide enough to reach the numerical floor
+TAYLOR_SWEEP_DECADES = 8  # 1e-1 down to 1e-9: the window is found inside this, not assumed
+# Decision I7 (owner, 2026-09-13): the scored window is the decades immediately ABOVE the measured
+# floor, not a fixed range. As h → 0 a correct gradient's remainder goes as ½h²δᵀHδ while a wrong
+# one's goes as |ε·g·δ|·h, so that is where the two differ most — measured, a correct gradient
+# scores 1.99–2.29 there and a 5 % corruption scores exactly 1.000. Five decades is unattainable on
+# this solver: the map is piecewise smooth, so above ~1e-4 a step straddles a kink and the local
+# slope becomes erratic, while below ~3e-7 the remainder is at the fp64 floor.
+TAYLOR_ANCHOR_DECADES = 2.0  # width of the scored window, above the floor
+# A point must exceed this multiple of the measured floor to be scored. Derived, not tuned: at
+# margin M the weakest point in the fit carries at most 1/M of noise, which biases the fitted slope
+# by about log10(1 + 1/M) / span. M = 100 keeps that under 0.003 — three orders below the ±0.2 band
+# — while M = 10 lets it reach 0.02. Verified on an exact quadratic, whose slope is 2 by
+# construction: M = 10 reads 1.983–2.005, M = 100 reads 1.9996–2.0016.
+TAYLOR_FLOOR_MARGIN = 100.0
 # Noise floor: estimated from repeated evaluations of J at fixed θ, with a roundoff-scaled
 # fallback for a perfectly deterministic J. Points below the floor are excluded (decision §4).
 # floor = max(measured spread, C·√N·eps·max(|J|, 1)): roundoff accumulates over N solver steps as
 # a random walk, and the √N keeps the floor sensible when N changes between grid refinements.
 TAYLOR_NOISE_FLOOR_REPEATS = 8
-TAYLOR_NOISE_FLOOR_C = 10.0  # decision B19; revisit against the real solver at M2.3
+# B19's model, kept as a reported comparison rather than as the exclusion threshold: measured
+# against the real solver it is ~65x conservative (finding I6), and conservatism in a threshold for
+# discarding data costs about two decades of usable window. The floor is now MEASURED — the
+# remainder evaluated at a step far below any signal is what numerical noise is left.
+TAYLOR_NOISE_FLOOR_C = 10.0
+TAYLOR_FLOOR_PROBE_H = 1e-10  # step at which the remainder is pure noise for any sane objective
 
 # --- Forward vs reverse, V15; dot-product test, V16 (PRD §8.5; decision B4/B5) ------------
 # Both are TRANSPOSE-consistency checks, not derivative checks: JAX builds reverse mode by
