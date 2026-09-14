@@ -179,12 +179,13 @@ an externally-produced measurement, is an M2.7 deliverable and does not exist ye
 - Squared one-sided differences are fine: `max(x,0)²` is C¹. The rule is no kinks in the
   differentiated path, not "never write `max`".
 
-## A question this handoff does not answer
+## Who decides
 
-The working agreement is written for a single owner who makes the calls on open findings. With a
-second contributor, **who decides** — and does the "stop at every gate and wait for review" rule mean
-waiting on either of you, or both? Worth settling explicitly rather than discovering it at the next
-gate.
+**Treat the owner as one role, shared.** Either of you can answer an open finding or accept a
+milestone gate, and an answer from one is an answer from the project — no second sign-off, no
+waiting on both. The rules that follow from that are unchanged: a decision still gets written into
+`m2/OPEN_QUESTIONS.md` or `m2/decisions/`, and the PRD is still amended in the same commit that
+implements it. The record is what makes a decision durable, not who made it.
 
 ## Untracked files
 
