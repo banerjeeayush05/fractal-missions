@@ -187,6 +187,67 @@ waiting on both. The rules that follow from that are unchanged: a decision still
 `m2/OPEN_QUESTIONS.md` or `m2/decisions/`, and the PRD is still amended in the same commit that
 implements it. The record is what makes a decision durable, not who made it.
 
+## Starting a Claude Code session on this repo
+
+`CLAUDE.md` at the root and in `m2/` load themselves, so a session already has the rules. What it
+does not have is *current state and intent*, which is what this prompt supplies. Paste it as the
+first message of a new session, with a task appended.
+
+```
+Read HANDOFF.md at the repo root first, in full, before writing any code or
+running anything. Then read m2/CLAUDE.md and WORKING_AGREEMENT.md. Then skim
+m2/OPEN_QUESTIONS.md — you do not need to absorb all 1173 lines, but you need
+to know what the lettered findings are and that F/G/H/I/J/K/L map to milestones.
+
+This is a differentiable physics solver where the whole point is that the
+gradient is verified rather than assumed. The repo has unusual rules and every
+one of them exists because of a specific failure. Do not treat any of them as
+boilerplate.
+
+Before touching anything, establish the baseline so that any failure you see
+later is yours and not inherited:
+
+    cd m2 && uv sync && uv run pytest
+
+You should see 251 passed, 2 xfailed. THE TWO XFAILS ARE DELIBERATE. They are
+V8 (Zalesak's notch) and V6-under-WENO5 (order 2.08 against a spec of 4), both
+recorded with evidence in OPEN_QUESTIONS.md as J4 and J2. They are
+xfail(strict), so if you "fix" one, CI goes red on purpose. Do not try to make
+them pass, and do not change a tolerance to do it.
+
+Current state: M2.0 through M2.3 are done, WENO5 landed after M2.3, and M2.4
+(checkpointing + 3D) is BUILT BUT ITS GATE IS NOT CLOSED — two of its items
+(peak memory under 40 GB, warm adjoint ratio at or under 4x) are specified on
+an H100 we have not run yet. The rule in this repo is stop at every gate and do
+not build ahead, so M2.5 is not open yet.
+
+There is a second agent session working this repo. Before you start, tell me
+what you intend to pick up and I will confirm it does not collide.
+
+When you have read the above, report back:
+  1. what you understand the mission's governing constraint to be, in one line
+  2. which findings are open and awaiting a decision
+  3. what you propose to work on, and why it does not jump the M2.4 gate
+
+Do not write code until I have answered.
+
+My task for you: <fill in>
+```
+
+Two notes on why it is shaped that way.
+
+**The xfail warning is the most important line in it.** A fresh agent seeing two failing checks will
+want to fix them, which is normally the right instinct. Here it would destroy deliberately recorded
+evidence and quietly loosen a spec.
+
+**"Report back before writing code" is a cheap check that the reading happened.** If the answer to
+(1) is anything other than *a gradient that is wrong but plausible is worse than no gradient*, the
+session skimmed and should be sent back.
+
+**If two sessions run at once**, the collision risk is `m2/OPEN_QUESTIONS.md` and `m2/M2_PRD.md` —
+both are appended to constantly and both are where merge conflicts will land. Agreeing who owns each
+file for a session is cheaper than resolving conflicts afterwards.
+
 ## Untracked files
 
 `m3/M3_PRD.md`, `m3/M3_Lesson_Plan.docx` and `real world/` are present but not committed, and were
