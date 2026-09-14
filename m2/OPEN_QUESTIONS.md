@@ -678,3 +678,47 @@ reinitialising less often to save time.
 √N·eps·|J|, so at production N = 625 it is ~7× higher than at N = 13. Combined with I1's upper cap,
 the window at production scale may be under three decades. This needs measuring before the M2.4 and
 M2.7 gates depend on it — not discovering there.
+
+**I4. k is measured: ≈ 330 field-equivalents per step, not the 1–50 bracketed at M2.0.**
+Measured directly rather than estimated: `jax.linearize` partially evaluates the function and the
+residuals are exactly the constants the linearised part closes over. The value is stable in N
+(349.2, 349.2, 348.7 at N = 25, 50, 100), so it is a genuine per-step factor. Reinitialisation is
+about 40 % of it — k falls to 210 with it switched off, which is the memory price of the smoothing
+finding I2 describes.
+
+What it implies for the M2.4 gate case (S03 in 3D, 21.6 MB per fp64 field, N = 625):
+
+| scheme | memory | vs the 40 GB gate |
+|---|---|---|
+| no checkpointing | ~4.5 TB | impossible |
+| two-level √N | **~20 GB** | fits, with about 2× margin |
+| three-level | ~8 GB | fits comfortably, at 2× recompute |
+
+So the 40 GB gate is achievable with two-level checkpointing, now on a measured number rather than
+a guess. `reports/dense_cost_table.md` should be regenerated with k = 330 before M2.4.
+
+**I5. The adjoint cost ratio misses the M2.3 target, and the reason is memory.**
+**Needs an owner decision.** Measured warm, compile excluded, 2D unchecked:
+
+| case | forward | adjoint | ratio |
+|---|---|---|---|
+| 64×64, N=50 | 0.036 s | 0.177 s | **4.96×** (target ≤ 3×) |
+| 128×128, N=100 | 0.113 s | 3.30 s | 29× |
+| 192×192, N=100 | 0.118 s | 8.51 s | 72× |
+| 64×64, reinit off | 0.036 s | 0.135 s | 3.78× |
+
+The blow-up with size is not algorithmic: at k ≈ 330 the unchecked tape is ~4.3 GB at 128×100 and
+~9.5 GB at 192×100, so this 8 GB machine is swapping. The 64×64 figure of 4.96× is the honest
+unchecked number, and it exceeds the ≤3× target the M2.3 gate carries.
+
+Three things follow. First, **checkpointing is likely to make the adjoint faster, not slower**, on
+any machine where the unchecked tape does not fit — the usual time-for-memory trade runs backwards
+here. Second, the target should probably be re-set against a checkpointed run on the real gate
+hardware rather than against an unchecked 2D run on a laptop. Third, if the ratio must come down
+structurally, k is the lever: the closest-point gather's bilinear sampling and the reinitialisation
+sweep are the two largest contributors, and both have cheaper formulations.
+
+Options: (a) accept 4.96× as the 2D unchecked measurement, and set the real target at M2.4 against a
+checkpointed run on the H100; (b) reduce k first; (c) keep the 3× target and treat this as a failure
+to be fixed before M2.4. Recommendation: (a), because the number the product cares about is the
+checkpointed ratio on the gate hardware, and this laptop measurement cannot stand in for it.

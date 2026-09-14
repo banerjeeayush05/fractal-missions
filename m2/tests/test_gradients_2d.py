@@ -144,6 +144,7 @@ def test_the_gradient_is_not_silently_zero_or_nan():
     assert grad["v_iso"] < 0 and grad["v_dir"] < 0
 
 
+@pytest.mark.nightly  # a diagnostic of finding I1, not a gate check: §8.0's fast tier is a budget
 def test_the_remainder_is_quadratic_where_the_quadratic_model_holds(ledger_measure):
     """Finding I1, pinned: at longer runs the O(h²) regime is a *window*, and B3's h-range overshoots it.
 

@@ -50,7 +50,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         marks = list(item.iter_markers("check"))
         if not marks:
-            item.add_marker(pytest.mark.fast)
+            # Untagged tests are structural and run in the fast tier, unless they carry an explicit
+            # tier marker: §8.0's tier table lists the checks, and a diagnostic that costs tens of
+            # seconds belongs in nightly rather than in a budget the whole team runs on every commit.
+            if not any(item.get_closest_marker(tier) for tier in TIERS):
+                item.add_marker(pytest.mark.fast)
             continue
         if len(marks) > 1:
             errors.append(f"{item.nodeid}: at most one @pytest.mark.check per test")
