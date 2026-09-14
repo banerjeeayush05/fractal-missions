@@ -1117,3 +1117,57 @@ anticipated. Everything else in the gate is done: V17, V18, 3D V14/V15/V16/V17, 
 schedule derived from measured k. **The milestone cannot be declared complete without that run**, and
 I am not going to report it as complete on projections.
 
+## Pre-flight for the H100 gate run (2026-09-14)
+
+Two decisions confirmed by the owner, recorded so they are not re-litigated:
+
+- **Hardware-gated numbers do not enter the ledger of record.** CI on a clean checkout stays the
+  only writer. A hand-driven run on rented hardware emits a dated report under `reports/`, which
+  `verification.md` cites as an externally-produced measurement with the hardware and driver
+  recorded. Keeps "generated, never hand-written" intact and keeps provenance explicit.
+- **J5 interim: `godunov` remains the default spatial scheme** until the H100 profile exists.
+  Chosen, not inherited from inaction.
+
+**Pre-flight found two defects that would each have wasted the instance.** This is the case for
+doing it before renting rather than after.
+
+**L1. `estimate_capacity` under-sized the padded request in 3D, and the gate run would have
+overflowed part-way through.** The bound was `2·(nz + prod(shape[1:]))` — an interface *length*,
+correct in 2D where it reduces to the domain perimeter, wrong in 3D where the interface is a
+surface. On the gate case it returned **123,240** against an evaluation band holding **180,000**
+cells at full trench depth, so `CapacityOverflow` would have fired around 60 % of the way down the
+etch, after paying for instance setup and compile.
+
+Replaced by the cross-sectional perimeter extruded across the remaining lateral axes, which reduces
+to the old expression in 2D (every 2D result is unchanged — `(64,64)` still gives 1536) and yields
+444,000 in 3D against 155,400 actually occupied. Pinned by a test that counts the band straight from
+φ rather than agreeing with the estimator's own arithmetic.
+
+**L2. The "3D gate case" was not a trench.** Decision §2 leaves the mask unmodelled, so a
+directional etch removes the flat field at exactly the rate it removes the trench floor. Measured
+over the full 625 steps: the surface fell **2480 nm** while the trench went from 100 nm deep to
+**60 nm** — it eroded. OPEN_QUESTIONS H2 predicted precisely this; what was new is that the *gate
+case itself* was silently affected.
+
+A memory and cost gate measured on that geometry is measured on a translating plane: peak band
+occupancy stays at its initial 36,000 instead of reaching 155,400, so capacity and any occupancy-
+dependent figure would have been optimistic by 4×. The gate script now emulates the mask as a static
+lateral window on the rate — the same test-only device the half-day diagnostic used, explicitly
+marked for deletion when H2's real mask geometry lands at M2.6 — and with it the trench deepens
+100 → 2290 nm as intended. The unmasked run is kept as a control in the report so the difference
+stays visible.
+
+**Pre-flight results, on CPU, full gate geometry (270×100×100, N = 625):**
+
+| | masked (gate case) | unmasked (control) |
+|---|---|---|
+| max CFL | 0.417 | 0.417 |
+| peak band occupancy | 155,400 / 444,000 | 36,000 / 444,000 |
+| depth | 100 → **2290 nm** | 100 → 60 nm (erodes) |
+| forward wall clock | 192 s | 192 s |
+
+**Ready for the instance.** `scripts/gate_m2_4.py` runs the gate and writes the dated report;
+`--forward-only` is what produced the table above without spending anything. Outstanding on the
+H100: peak device memory against the 40 GB budget, warm adjoint ratio against ≤ 4×, 3D V14 on the
+gate case, all under both schemes — which also settles J5.
+

@@ -81,11 +81,22 @@ def estimate_capacity(grid: Grid, bands: BandConfig, *, margin: float = 1.5) -> 
     a margin. Generous on purpose: K costs memory, an overflow costs a run. OPEN_QUESTIONS B26.
     """
     shell_cells = 2.0 * bands.evaluation_cells + 1.0  # thickness of the |φ| < b shell, in cells
-    lateral = math.prod(grid.shape[1:])
-    # Upper bound on interface length for one feature: the domain perimeter in cells. A trench is
-    # floor + two sidewalls ≈ CD/dx + 2·depth/dx, which this comfortably exceeds.
-    perimeter_cells = 2.0 * (grid.shape[0] + lateral)
-    return int(math.ceil(margin * shell_cells * perimeter_cells))
+    # Upper bound on the interface AREA for one feature, in cells: the perimeter of the
+    # (vertical, first-lateral) cross-section, extruded across the remaining lateral axes.
+    #
+    # **The extrusion is the fix for a 3D under-estimate that would have been found on the gate
+    # hardware.** The previous form used `2·(nz + prod(shape[1:]))`, which is an interface *length*
+    # — right in 2D, where it reduces to the same expression, and badly wrong in 3D, where the
+    # interface is a surface. Measured on the gate case (S03 3D, 270×100×100, a 2500 nm trench):
+    # the evaluation band holds **180,000** cells against the old estimate of 123,240, so the run
+    # would have raised CapacityOverflow about 60 % of the way down the etch. The bound below gives
+    # 74,000 interface cells → 444,000 capacity, comfortably above the 45,000 actually occupied.
+    #
+    # Still generous on purpose: K costs memory (≈ 32 MB here, against 21.6 MB per field) and an
+    # overflow costs a run. OPEN_QUESTIONS B26, and finding L1 for the 3D correction.
+    cross_perimeter = 2.0 * (grid.shape[0] + grid.shape[1])
+    extrusion = math.prod(grid.shape[2:]) if grid.ndim > 2 else 1
+    return int(math.ceil(margin * shell_cells * cross_perimeter * extrusion))
 
 
 @dataclass(frozen=True)

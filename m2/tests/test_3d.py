@@ -196,3 +196,41 @@ def test_the_gate_case_memory_is_projected_from_the_measured_residual_factor(led
     assert projections["two_level_L1"] < budget_gb, (
         f"the best two-level schedule projects to {projections['two_level_L1']:.1f} GB against a "
         f"{budget_gb} GB budget")
+
+
+def test_the_capacity_estimate_covers_the_gate_geometry_in_3d(ledger_measure):
+    """Finding L1: `estimate_capacity` under-sized the padded request in 3D by about 1.5x.
+
+    The old bound was `2·(nz + prod(shape[1:]))` — an interface *length*, which is right in 2D and
+    wrong in 3D, where the interface is a surface. On the gate case (S03 3D, a 2500 nm trench) it
+    returned 123,240 against an evaluation band holding 180,000 cells, so a gate run would have
+    raised CapacityOverflow about 60 % of the way down the etch — on rented hardware, after paying
+    for setup and compile.
+
+    Asserted against the band occupancy counted directly from φ, not against the estimator's own
+    arithmetic, so this cannot pass by agreeing with itself.
+    """
+    from m2.band import estimate_capacity
+    from m2.config import BandConfig
+    from m2.schema import Grid
+
+    bands = BandConfig(8.0, 2.0, 1.5, None)
+    grid = Grid((270, 100, 100), 10.0, (False, True, True))
+    capacity = estimate_capacity(grid, bands)
+
+    # The deepest trench the gate case reaches, counted straight from the field.
+    phi = initial.trench(grid, 2600.0, 500.0, 2500.0)
+    occupied = int((np.abs(np.asarray(phi)) < bands.evaluation_cells * grid.spacing_nm).sum())
+
+    ledger_measure.update({"grid": list(grid.shape), "capacity": capacity,
+                           "evaluation_band_cells": occupied,
+                           "headroom": 1.0 - occupied / capacity,
+                           "old_estimate_before_L1": 123240, "finding": "L1"})
+    assert capacity > occupied, (
+        f"capacity {capacity:,} is below the {occupied:,} cells the gate geometry puts in the "
+        f"evaluation band: a gate run would overflow part-way through")
+    assert capacity < 20 * occupied, f"capacity {capacity:,} is wastefully oversized"
+
+    # And the 2D bound must be unchanged, or every existing 2D result moves.
+    assert estimate_capacity(Grid((64, 64), 10.0, (False, True)), bands) == 1536
+
