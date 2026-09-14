@@ -59,3 +59,24 @@ def open_volume(phi: jax.Array, grid: Grid) -> jax.Array:
     """∫H(φ) dV — the complement, for when the open side is the natural quantity."""
     cell = grid.spacing_nm**grid.ndim
     return jnp.sum(mollified_heaviside(phi, grid)) * cell
+
+
+def etched_volume(phi: jax.Array, phi_reference: jax.Array, grid: Grid) -> jax.Array:
+    """∫[H(φ) − H(φ_ref)] dV — the volume removed since a reference state, in nm^d.
+
+    Decision A2 offered exactly this as the alternative to renaming: "define etched volume as the
+    integral of H(phi) − H(phi_0)". It is the better-conditioned form, and the reason matters for
+    the gradient tests.
+
+    `solid_volume` sums a quantity of order 1 over every cell in the domain, so its rounding error
+    is about sqrt(cells)·eps·|J| — with |J| ~ 1e5 nm² that is a noise floor near 1e-9, which eats
+    the bottom decades of the Taylor test's sweep. Here the summand is exactly zero wherever the
+    interface has not passed, so both the magnitude and the number of contributing terms collapse to
+    the swept band. The noise floor drops by roughly three orders of magnitude, and the Taylor window
+    can sit where the quadratic model actually holds (findings I1, I3).
+
+    `phi_reference` is a constant field, so subtracting it changes no derivative: the gradient of
+    this and of `solid_volume` are identical in exact arithmetic.
+    """
+    cell = grid.spacing_nm**grid.ndim
+    return jnp.sum(mollified_heaviside(phi, grid) - mollified_heaviside(phi_reference, grid)) * cell

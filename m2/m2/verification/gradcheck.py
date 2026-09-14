@@ -325,3 +325,24 @@ def _tolerance_result(check: str, errs: list[float], rtol: float, what: str) -> 
            else f"{what}: {bad.size}/{e.size} directions exceed {rtol:g} (max {e.max():.2e})")
     return CheckResult(check, passed, msg, {"max_rel_error": float(e.max()), "rtol": rtol, "n": int(e.size),
                                             "n_failed": int(bad.size)})
+
+
+def h_max_for_interface_motion(travel_cells: float, motion_cells: float = 0.1) -> float:
+    """Largest Taylor step whose perturbation moves the interface less than `motion_cells` (I1).
+
+    The Taylor remainder is quadratic only while the perturbation is small compared with the feature
+    being measured. A fixed h_max cannot express that: h = 0.1 is a 10 % parameter change, which over
+    a long run moves the interface several cells and leaves the quadratic regime entirely — so the
+    check fails on a gradient that is correct.
+
+    The rule is derived from what the test needs rather than fitted to a result: a perturbation of
+    relative size h moves the interface by roughly h × (total travel), so requiring that to stay
+    under a fraction of a cell gives h_max = motion_cells / travel_cells. It predicted the observed
+    transition independently (20 cells of travel → 5e-3; the measurements turn quadratic at ~1e-2).
+
+    Narrowing a window is also how a test is blinded, so the rule travels with an obligation: the
+    V19 canary must still catch a 5 % corruption in whatever window this produces.
+    """
+    if travel_cells <= 0:
+        raise ValueError(f"travel_cells must be positive, got {travel_cells}")
+    return motion_cells / travel_cells

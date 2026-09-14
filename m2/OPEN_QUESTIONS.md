@@ -722,3 +722,47 @@ Options: (a) accept 4.96× as the 2D unchecked measurement, and set the real tar
 checkpointed run on the H100; (b) reduce k first; (c) keep the 3× target and treat this as a failure
 to be fixed before M2.4. Recommendation: (a), because the number the product cares about is the
 checkpointed ratio on the gate hardware, and this laptop measurement cannot stand in for it.
+
+**I6. The noise-floor model is ~65× conservative, and that costs two decades.**
+B19 sets the floor at `10·√N·eps·|J|`, which for the M2.3 case gives 1.66e-9. Measured — by
+evaluating the remainder at a step far below any real signal — the floor is **2.55e-11**. The model
+is a safe upper bound, but paying 65× in a quantity that enters as a *threshold for discarding
+data* costs about two decades of usable window. Measuring it costs three extra evaluations.
+
+**I7. Five decades of clean quadratic behaviour is not attainable on this solver, for a structural
+reason.** **Needs an owner decision; supersedes the h_max proposal in I1.**
+
+Sweeping one direction from h = 1e-2 down to 1e-10 on the N = 50 case, local slopes are:
+
+    h:      1e-2  3e-3  1e-3  3e-4  1e-4  3e-5  1e-5  3e-6  1e-6  3e-7  1e-7  3e-8 ...
+    slope:        0.56  2.19  0.72  2.17  2.00  2.00  2.00  1.99  2.02  1.26  0.74
+
+Three regimes. Above ~1e-4 the slopes are **erratic, not merely wrong** — the discrete map is
+piecewise smooth, and a step that straddles one of its kinks (upwind max/min switching, a band cell
+entering or leaving, a bilinear sample crossing a cell boundary) picks up a first-order jump.
+Between ~1e-4 and ~3e-7 the remainder is cleanly quadratic. Below that it is at the floor.
+
+So the clean window is about **2.5–3 decades**, bounded above by the kink spacing and below by fp64.
+No choice of a fixed range recovers five, and the kink spacing shrinks as N grows.
+
+**Proposal: anchor the window to the measured floor.** Fit the ~2 decades immediately above it,
+rather than a fixed h-range. The justification is not convenience: as h → 0 a correct gradient's
+remainder goes as ½h²δᵀHδ while a wrong one's goes as |ε·g·δ|·h, so the decades just above the floor
+are exactly where the two differ most. Measured on the M2.3 case:
+
+| gradient | slopes in the anchored window |
+|---|---|
+| correct | 1.992 – 2.288 |
+| 5 % corrupted (each component in turn) | **1.000, 1.000, 1.000** |
+
+Compare the fixed window, which scored a *correct* gradient at 1.68 and failed it. The anchored
+window has more discrimination, not less, which is the test that separates this from narrowing a
+window until everything passes.
+
+Everything else stays: ≥20 directions, every direction passing on its own, the two-zone scoring of
+B15/B21. What changes is where the window sits and that the floor is measured rather than modelled.
+
+Note this supersedes I1's h_max rule, which was derived for the wrong bound: it caps interface
+motion at 0.1 cell, but the kinks turn out to be far finer than that — the clean region begins near
+0.002 cells of motion. `h_max_for_interface_motion` is implemented and available, but the anchored
+window is the better mechanism and I recommend it instead.
