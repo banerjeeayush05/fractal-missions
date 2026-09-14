@@ -5,9 +5,16 @@ and M2.3's job is to measure rather than assume them. They are recorded in the l
 V14 row's run so the M2.4 proposal can cite a measurement instead of the 1–50 bracket guessed at
 M2.0.
 
-Nothing here asserts the M2.3 cost target of ≤3×, because the measured ratio does not meet it
-(finding I5) and inventing a looser assertion would be exactly the move §11 forbids. The assertions
-are the facts that must hold for the measurement to mean anything at all.
+Nothing here asserts a cost target. Originally that was because the measured ratio missed the M2.3
+gate's ≤3× (finding I5) and inventing a looser assertion would be exactly the move §11 forbids. The
+owner has since resolved I5 as option (a), 2026-09-13: **the M2.3 ratio is measured and reported,
+not gated**, and M2.4's ≤4× becomes the first gated ratio, taken on a checkpointed run on the gate
+hardware rather than on an unchecked 2D run on a laptop.
+
+So this file keeps measuring and keeps asserting nothing about the ratio — which is the point. A
+number that is reported but not gated still shows a regression in the ledger; deleting the
+measurement would make M2.4 the first time anyone looks. The assertions below are only the facts
+that must hold for the measurement to mean anything at all.
 """
 
 import time
@@ -71,12 +78,16 @@ def test_adjoint_cost_and_residual_factor_are_measured(ledger_measure):
 
     ledger_measure.update({
         "forward_s": forward, "adjoint_s": adjoint, "adjoint_ratio": adjoint / forward,
-        "m2_3_target_ratio": 3.0, "target_met": bool(adjoint / forward <= 3.0),
+        "m2_3_target_ratio": "withdrawn (decision I5(a), owner 2026-09-13): measured, not gated",
+        "m2_4_gated_target_ratio": 4.0,
+        "m2_4_target_met_on_this_2d_unchecked_run": bool(adjoint / forward <= 4.0),
+        "note": "M2.4's 4x is gated on a CHECKPOINTED run on the gate hardware; this 2D unchecked "
+                "laptop figure is not that measurement and does not stand in for it",
         "k_residual_fields_per_step": k, "residual_bytes": total_bytes,
         "n_steps": cfg.n_steps, "grid": list(cfg.grid.shape),
         "m2_0_estimate_of_k": "1-50 (bracket, superseded)",
         "implied_m2_4_two_level_gb": two_level_gb, "implied_m2_4_naive_tb": naive_tb,
-        "finding": "I4 (k measured), I5 (ratio misses the 3x target)"})
+        "finding": "I4 (k measured), I5 (resolved: ratio measured and reported, not gated)"})
 
     assert adjoint > forward, "a gradient cannot be cheaper than the value it differentiates"
     assert 1.0 < k < 10000.0, f"k = {k} is not a plausible residual factor"

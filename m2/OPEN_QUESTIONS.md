@@ -747,6 +747,24 @@ checkpointed run on the H100; (b) reduce k first; (c) keep the 3× target and tr
 to be fixed before M2.4. Recommendation: (a), because the number the product cares about is the
 checkpointed ratio on the gate hardware, and this laptop measurement cannot stand in for it.
 
+**RESOLVED — option (a) (owner, 2026-09-13).** The M2.3 gate's "adjoint ≤3× forward in 2D unchecked"
+is withdrawn and replaced by "adjoint ratio measured and reported, not gated"; M2.4's ≤4× becomes the
+first ratio that is actually gated, and it is measured on a **checkpointed** run on the gate
+hardware. PRD §6 amended at both rows.
+
+Two consequences to carry into M2.4, so this does not read later as a target quietly dropped:
+
+- **M2.4's ≤4× is now load-bearing for two claims, not one.** It is the only remaining cost gate on
+  the adjoint, and it is also the first measurement that can confirm the prediction this decision
+  rests on — that checkpointing makes the adjoint *faster* here, because the unchecked tape does not
+  fit in RAM and the machine is swapping. If the checkpointed H100 ratio comes in above 4×, that
+  prediction was wrong and option (b) (reduce k) returns immediately, with the closest-point
+  gather's bilinear sampling and the reinitialisation sweep as the two named levers.
+- **`tests/test_adjoint_cost.py` keeps measuring and asserts nothing about the ratio.** It records
+  `adjoint_ratio` and `target_met` in the ledger every run. That is deliberate: a number that is
+  reported but not gated still shows a regression, whereas deleting the measurement would make M2.4
+  the first time anyone looks.
+
 **I6. The noise-floor model is ~65× conservative, and that costs two decades. RESOLVED — the floor
 is now measured (decision I7, owner 2026-09-13).**
 B19 sets the floor at `10·√N·eps·|J|`, which for the M2.3 case gives 1.66e-9. Measured — by
