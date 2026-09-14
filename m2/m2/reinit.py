@@ -39,9 +39,10 @@ def smoothed_sign(phi0: jax.Array, grid: Grid) -> jax.Array:
     return phi0 / jnp.sqrt(phi0**2 + dx**2)
 
 
-def _godunov_grad_norm_for_reinit(phi: jax.Array, sign: jax.Array, grid: Grid) -> jax.Array:
+def _godunov_grad_norm_for_reinit(phi: jax.Array, sign: jax.Array, grid: Grid,
+                                  scheme: str = "godunov") -> jax.Array:
     """|∇φ| upwinded by the sign of φ₀, as the reinitialisation equation requires."""
-    minus, plus = one_sided_differences(phi, grid)
+    minus, plus = one_sided_differences(phi, grid, scheme)
     total = jnp.zeros_like(phi)
     for dm, dp in zip(minus, plus):
         positive = jnp.maximum(jnp.maximum(dm, 0.0) ** 2, jnp.minimum(dp, 0.0) ** 2)
@@ -51,15 +52,22 @@ def _godunov_grad_norm_for_reinit(phi: jax.Array, sign: jax.Array, grid: Grid) -
     return jnp.where(total > GRAD_FLOOR**2, jnp.sqrt(safe), 0.0)
 
 
-def reinit_iteration(phi: jax.Array, phi0: jax.Array, grid: Grid, dtau: float) -> jax.Array:
-    """One pseudo-time step of the reinitialisation PDE."""
+def reinit_iteration(phi: jax.Array, phi0: jax.Array, grid: Grid, dtau: float,
+                     scheme: str = "godunov") -> jax.Array:
+    """One pseudo-time step of the reinitialisation PDE.
+
+    The scheme is threaded here too, not only into advection. Reinitialisation runs every 5 steps
+    and reshapes φ near the interface, so a first-order Hamiltonian here would put back some of the
+    smearing WENO5 removes from the advection — the two have to move together or the measurement
+    of what WENO5 bought is meaningless.
+    """
     sign = smoothed_sign(phi0, grid)
-    grad_norm = _godunov_grad_norm_for_reinit(phi, sign, grid)
+    grad_norm = _godunov_grad_norm_for_reinit(phi, sign, grid, scheme)
     return phi - dtau * sign * (grad_norm - 1.0)
 
 
 def reinitialise(phi: jax.Array, grid: Grid, n_iterations: int,
-                 dtau_cells: float = REINIT_DTAU_CELLS) -> jax.Array:
+                 dtau_cells: float = REINIT_DTAU_CELLS, scheme: str = "godunov") -> jax.Array:
     """`n_iterations` fixed iterations, always from the same φ₀ (decision C2: dτ = 0.5·dx).
 
     The repair reaches about `n_iterations · dtau_cells` cells from the interface per cycle. That
@@ -72,7 +80,7 @@ def reinitialise(phi: jax.Array, grid: Grid, n_iterations: int,
     phi0 = phi
 
     def body(current, _):
-        return reinit_iteration(current, phi0, grid, dtau), None
+        return reinit_iteration(current, phi0, grid, dtau, scheme), None
 
     if n_iterations == 0:
         return phi

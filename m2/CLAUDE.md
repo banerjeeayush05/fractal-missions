@@ -49,6 +49,18 @@ Revisit only for multi-feature or wafer-scale domains. The reference case is sma
   derivative against the function. V14a/b/c (analytic sensitivities) carry the rest.
 - **V19**: a gradient with one component ×1.05 must make V14, V15 and V16 fail, with an unmutated
   control passing. Its own mutation guard is `tests/test_v19_mutants.py`.
+- **Two spatial schemes** (§5.2): `godunov` (first order, still the DEFAULT) and `weno5`
+  (fifth-order HJ-WENO, built post-M2.3). WENO5 cuts V10 anisotropy 125× and V1 radius error 120×,
+  but its scheme-level order is ~2.08 not ≥4 (finding J2: the velocity-extension path is second
+  order), V8's notch still fails (J4), and making it the default is an open owner decision (J5).
+  Its ε is fixed where the literature scales it by a stencil `max` — that max would be a kink.
+  Within 3 cells of a hard boundary it falls back to Godunov, or it extrapolates from the Neumann
+  clamp and invents a phantom interface (J3).
+- **The Taylor remainder can notch.** |R| must grow with h; where it does not, two terms are
+  cancelling and the log-log slope is meaningless — it reads ~1.6 on a gradient that is exactly
+  right. `_cancellation_ceiling` caps the window below the first notch. This is safe only because
+  the window is anchored at the floor: the cut removes points ABOVE the notch, never below, and
+  below is where a first-order error dominates. Do not "fix" a failing V14 by widening the band.
 - Every differentiable parameter lives in the params PyTree, never in a closure.
 - Fixed counts everywhere: N is derived as ceil(D/(cfl_target·dx)), never hand-written; fixed
   n_reinit, fixed extension iterations. CFL ≤ 0.5 asserted every step, returned as a scan output

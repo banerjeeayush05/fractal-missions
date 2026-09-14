@@ -219,3 +219,49 @@ def test_gradient_shape_mismatch_is_an_error():
     th = A.theta0()
     with pytest.raises(ValueError, match="components"):
         taylor_test(A.objective, th, {"a": jnp.asarray(1.0)}, scales=A.scales(), key=KEY)
+
+
+# --- the cancellation guard (finding J1) ------------------------------------------------------
+
+
+def test_a_cancellation_notch_is_excluded_from_the_fit():
+    """|R| must grow with h; where it does not, two terms are cancelling and the slope is meaningless.
+
+    Built as a synthetic remainder rather than run through the solver, so the notch is placed on
+    purpose and the guard is tested rather than observed. J(θ) = c₂·t² + c₃·t³ with c₃ of opposite
+    sign gives a remainder whose h² and h³ terms cancel at a chosen h.
+    """
+    from m2.verification.gradcheck import _cancellation_ceiling
+
+    hs = 1e-1 * np.logspace(0.0, -8.0, 17)          # descending, as taylor_test builds them
+    R = hs ** 2                                      # clean quadratic
+    above = np.ones_like(hs, dtype=bool)
+    assert _cancellation_ceiling(hs, R, above) == pytest.approx(hs.max())
+
+    notched = R.copy()
+    notched[3] = R[3] / 40.0                         # a 40x dip, as measured under WENO5
+    ceiling = _cancellation_ceiling(hs, notched, above)
+    assert ceiling < hs[3], "the guard must cut BELOW the notch, not at it"
+    assert ceiling > hs[4], "and must not throw away the clean decades under it"
+
+
+def test_the_cancellation_guard_cannot_rescue_a_wrong_gradient():
+    """The property that makes the guard safe rather than convenient.
+
+    A first-order error gives R ∝ h, strictly monotone, so there is no notch and nothing is cut.
+    And when a wrong gradient *does* notch — its h term can cancel against the h² term — the guard
+    keeps everything BELOW the notch, which is exactly where the first-order term dominates. So the
+    slope the fit sees still tends to 1.
+    """
+    from m2.verification.gradcheck import _cancellation_ceiling
+
+    hs = 1e-1 * np.logspace(0.0, -8.0, 17)
+    above = np.ones_like(hs, dtype=bool)
+    assert _cancellation_ceiling(hs, hs.copy(), above) == pytest.approx(hs.max())
+
+    # A wrong gradient whose first-order term cancels against a quadratic one at h ~ 1e-3.
+    mixed = np.abs(-1e-3 * hs + hs ** 2)
+    ceiling = _cancellation_ceiling(hs, mixed, above)
+    kept = hs <= ceiling
+    slope = float(np.polyfit(np.log10(hs[kept][-6:]), np.log10(mixed[kept][-6:]), 1)[0])
+    assert slope < 1.5, f"the retained window must still read a first-order error, got {slope:.3f}"

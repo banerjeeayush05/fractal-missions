@@ -897,3 +897,144 @@ would leave the far field drifting by ∫R dt, and that error propagates inward 
 contaminates the measurement region. r(t) = 200 − 3t + 4·sin(2πt/T) oscillates, which no positive
 etch rate produces, so the check cannot be satisfied by the physics being right.
 
+## WENO5 findings (post-M2.3, owner decision H1)
+
+**J0. WENO5 is implemented, verified at order 5.13, and wired to the existing `spatial_scheme`
+flag.** It is **not** the default — `godunov` still is. **Needs an owner decision** (see J5).
+The reconstruction is Jiang & Peng's HJ-WENO; only D⁻ and D⁺ change, the Godunov upwind selection
+on top of them is untouched, and the flag is threaded into reinitialisation as well as advection
+(a first-order Hamiltonian in the repair would put back the smearing the advection just removed).
+
+What it buys, measured on product-shaped cases rather than benchmarks:
+
+| check | godunov | weno5 | requirement |
+|---|---|---|---|
+| V10 grid anisotropy (dx = 5) | 1.625 % | **0.013 %** | < 2 % |
+| V1 disk radius error (dx = 5) | 1.081 % | **0.009 %** | < 1 % |
+| V6 L¹ error at dx = 20 | 6.64 | **0.043** (155× lower) | — |
+| V14 worst slope, directional | 1.802 | **1.996** | ≥ 1.8 |
+
+The V14 line is worth noting: WENO5 makes the *gradient* check cleaner too, not just the forward
+solve. And V15/V16 hold (3.5e-16 and 4.9e-13 against a 1e-10 tolerance).
+
+**One deliberate deviation from the published scheme, for differentiability.** Jiang & Peng set the
+weight regulariser to ε = 1e-6·max(v₁²…v₅²). That `max` over the stencil is a kink in the
+differentiated path, which §11 forbids, so ε is fixed instead. This is safe because the smoothness
+indicators are built from v = Δφ/dx, which is |∇φ| — order 1 for a signed distance, whatever the
+units. `test_the_fixed_epsilon_is_not_load_bearing` moves ε by ±100× and requires the observed order
+not to move, so the deviation is shown inert rather than asserted to be.
+
+**J1. The Taylor remainder develops a cancellation notch under WENO5, and the harness mis-scored it
+as a gradient error. FIXED.** This was the serious-looking result of the day and it turned out to be
+a harness defect, not a gradient defect.
+
+V14 failed in 2 of 20 directions at slope ~1.59 — the "first-order term present" signature. The
+discriminators said otherwise immediately: V15 and V16 passed, and V14 on the one-parameter
+isotropic model was perfect at 2.000–2.000. Reading the signed remainder for direction 19:
+
+    h        1e-3      3.2e-4    1e-4      3.2e-5    1e-5
+    R       -2.3e-7   -9.4e-7   -9.4e-8   -9.4e-9   -9.4e-10
+             ^ 40x smaller than the h^2 line predicts; |R| went DOWN as h went UP
+
+From 3.2e-4 downward each half-decade divides |R| by exactly 10 — slope 2.000. The gradient is
+right. At h ≈ 1e-3 the h² and h³ terms nearly cancel, |R| dips, and a least-squares fit through the
+dip reads shallow.
+
+**Two hypotheses were tried and the first was wrong, which is worth recording.** The first guess was
+the C^⌊p⌋ smoothness of max(0, n·ẑ)^p: at p = 2 the second derivative jumps, and a Taylor remainder
+is a second-order probe. It made three predictions; p = 3 passing was one of them, but the other two
+failed — the failing directions had no excess p-component (0.18 and 0.49 against a median of 0.32),
+and p = 1.5, which is *less* smooth, passed cleanly at 1.921. Non-monotonic in smoothness, so not a
+smoothness effect. The second guess, a sign change in the signed remainder, also failed: the guard
+found none, because the terms only *nearly* cancel and R never crosses zero.
+
+The invariant that does hold is **monotonicity**: for a remainder governed by a single leading term,
+|R| grows with h. `_cancellation_ceiling` caps the scored window below the first point where it does
+not. **It cannot hide a wrong gradient**, and that is the property that makes it admissible rather
+than convenient: a pure first-order error gives R ∝ h, strictly monotone, so nothing is cut; and
+when a wrong gradient does notch, the cut keeps every point *below* it, which is exactly where the
+first-order term dominates. Pinned by two unit tests on synthetic remainders and by the canary,
+which still catches 5 % corruptions in every component under both schemes.
+
+WENO5 is what surfaced this: a first-order scheme's leading error is large enough that the
+cancellation sits above the scored window. Making the scheme accurate moved it inside.
+
+**J2. WENO5's scheme-level order is ~2.08, not the ≥4 the registry requires. Needs an owner
+decision.** Logged as `xfail(strict)` with the evidence, tolerance unchanged (§11).
+
+The reconstruction itself is verified at **5.13** on a field with an analytic derivative, so WENO5 is
+not broken. The leading hypothesis is that the scheme-level order is capped by the **velocity
+extension path, which is second order by construction**: `normals` uses central differences and
+`gather_to_band` uses bilinear interpolation. A fifth-order Hamiltonian fed a second-order rate field
+cannot be better than second order overall.
+
+*This is a hypothesis, not a measurement.* The experiment that would confirm it: raise the normals
+to a fourth-order central stencil and the gather to a cubic sample, and re-run — the order should
+move toward 4 if the cap is real, and stay at 2 if it is not. That is half a day, and it is the
+right next step if ≥4 matters. The error constant is 155× better either way, which is what V3 and
+V10 actually care about.
+
+**J3. WENO5's wide stencil manufactured a spurious interface at the domain boundary. FIXED, and the
+CFL assertion is what caught it.** `shift` implements the Neumann condition by replicating the edge
+value; WENO reads that flat run as perfectly smooth, gives it maximum weight and extrapolates from
+an artefact of the boundary. On Zalesak at 100², φ at the bottom-edge corner cell (99, 4) drifted
+from +67 to **−2.96** by step 588 — a phantom solid blob 67 cells from anything real. It entered the
+velocity band and, under the rotation model whose rate grows with radius, pushed the CFL from 0.34 to
+0.70 and tripped the assertion.
+
+Fixed by falling back to the two-point stencil within 3 cells of a non-periodic edge. The mask is a
+function of the grid index alone, so it is a compile-time constant: no data-dependent branch, no
+kink. Worth noting that the CFL assertion did its job here — it turned a silent far-field corruption
+into a hard stop.
+
+**J4. V8 (Zalesak) under WENO5: the area criterion is met, the notch criterion is not. Needs an
+owner decision.**
+
+| | area loss | notch filled | CFL |
+|---|---|---|---|
+| godunov, dt = 1.0 (the logged case) | 43.0 % | 100 % | 0.339 |
+| weno5, dt = 1.0 | — | — | **0.693, trips** |
+| weno5, dt = 0.5 (same physical time) | **1.23 %** | **31.4 %** | 0.169 |
+
+So WENO5 takes the area loss from 43 % to 1.23 %, inside V8's 2 %. But V8 also requires the notch to
+survive and the test asserts `filled < 0.25`; 31.4 % fails it. **The check still fails, on a
+different criterion.** This is the honest end state for a pure level-set method and it matches what
+I said before building it: the notch is a corner, and WENO5's high order applies in smooth regions.
+
+The remaining CFL trip at dt = 1.0 is *after* the J3 fix and is not yet explained. It is not a
+phantom blob — at the spike φ_min is −6.00 and the field is healthy. The likely cause is the
+rotation model itself: it is a **test-only** velocity whose rate grows without bound with distance
+from the rotation centre, so a band cell far out gets an arbitrarily large rate. No production model
+has that property — `isotropic` and `directional` return rates independent of position. That makes
+this a test-harness interaction rather than a solver defect, but **it is unconfirmed** and should not
+be written up as resolved.
+
+Options for V8: (a) leave it xfail with the new numbers recorded, which is strictly more informative
+than the 43 % figure; (b) spend the time to resolve the notch, which means the corner methods
+discussed — subcell-fix reinitialisation is the differentiability-safe one; (c) accept that a pure
+level-set method does not pass Zalesak's notch criterion and record that as the mission's position.
+Recommendation: (a) now, and treat (b) as a scheduled piece of work only if the notch matters for a
+product feature — which, on the coupon geometry, it has not so far.
+
+**J5. Should WENO5 become the default? Needs an owner decision — I have not changed it.**
+`spatial_scheme` still defaults to `godunov`, so nothing in `configs/` changes behaviour and every
+existing check result stands. Arguments for switching: every product-shaped measurement improves by
+two orders of magnitude, V14 gets *cleaner*, and V3's sidewall requirement is the reason the scheme
+was built. Arguments for waiting: J2 is unresolved, V8 still fails on the notch, and the cost has
+not been measured — WENO5 is a 7-point stencil against 2, so both runtime and the residual factor k
+will rise, and k feeds directly into the M2.4 memory gate (finding I4). **That last point is the
+one I would want measured before switching**, because M2.4's checkpoint schedule is derived from k.
+
+**J6. The 1.4° sidewall figure in H1 is not currently reproducible, and I could not check what
+WENO5 does to it.** The half-day diagnostic lived in a scratch script under `reports/local/`, which
+is untracked, and it is gone. My attempted reconstruction reads ~5° for *both* schemes at *both*
+dx = 10 and dx = 5 — it does not converge with dx, so it is dominated by my own hard-edged mask
+emulation rather than by discretisation, and it is not a valid V3 proxy. I have not reported a
+sidewall number for WENO5 as a result.
+
+This matters because **1.4° against V3's 0.5° is the stated justification for building WENO5 at
+all.** V3 is an M2.7 gate check and does not exist yet. The right fix is to build V3 properly rather
+than to reconstruct a diagnostic, and that is now blocked behind H2's resolution — the mask becomes
+real geometry at M2.6, and a collimated-etch sidewall measurement wants the real mask, not a lateral
+rate window. Recorded so the justification is not treated as settled evidence.
+

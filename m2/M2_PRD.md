@@ -214,6 +214,26 @@ Advection of φ under etch rate R:  ∂φ/∂t − R |∇φ| = 0   (decision §1
   It lands after the gradient harness exists so V14/V15/V16 verify it immediately, and deferring is
   nearly free because the adjoint is automatic: changing the forward scheme later means re-running
   the gradient checks, not rewriting an adjoint. V8's discrepancy is revisited then.
+- **Built (findings J0–J6).** `spatial_scheme="weno5"` selects Jiang & Peng's HJ-WENO; only D⁻ and
+  D⁺ change, the Godunov upwind selection on top is untouched, and the flag is threaded into
+  reinitialisation as well as advection. The reconstruction is verified at order **5.13**. On
+  product-shaped cases: V10 grid anisotropy 1.625 % → **0.013 %**, V1 radius error 1.081 % →
+  **0.009 %**, V6 L¹ error 155× lower, and V14's worst slope *improves* from 1.802 to 1.996.
+  Three qualifications, each with a finding: the scheme-level order is **~2.08, not the ≥4 this
+  document requires** (J2, capped by the second-order velocity-extension path — logged `xfail`,
+  requirement unchanged); V8's area loss falls to 1.23 % but its notch criterion still fails (J4);
+  and **`godunov` remains the default pending an owner decision** (J5), because WENO5's effect on
+  the residual factor k — which sets M2.4's checkpoint schedule (I4) — has not been measured.
+- **The regulariser deviates from the published scheme, deliberately** (J0). Jiang & Peng use
+  ε = 1e-6·max(v₁²…v₅²); that `max` over the stencil is a kink in the differentiated path, which
+  §11 forbids, so ε is fixed. Safe because the smoothness indicators are built from v = Δφ/dx ≈
+  |∇φ| ≈ 1 for a signed distance. A test moves ε by ±100× and requires the observed order not to
+  move, so the deviation is shown inert rather than asserted to be.
+- **Within 3 cells of a non-periodic boundary WENO5 falls back to the two-point stencil** (J3).
+  The Neumann condition replicates the edge value; WENO reads that flat run as smooth data and
+  extrapolates from it. Unfixed, this manufactured a phantom solid blob at a domain corner — φ
+  drifting from +67 to −2.96 — which the CFL assertion caught. The fallback mask is a function of
+  the grid index alone, so it adds no data-dependent branch.
 - Temporal: TVD-RK2 (Heun). RK3 behind a flag.
 
 **Fixed step count. This is a hard requirement.**

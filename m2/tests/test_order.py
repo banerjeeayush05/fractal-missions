@@ -378,3 +378,58 @@ def test_the_mms_source_path_is_off_in_production():
     with_source = solver.solve(cfg, phi0, material, {"v_iso": RATE}, n_steps=5, dt=0.05,
                                capacity=16384, source=lambda t: jnp.full(cfg.grid.shape, 1.0))
     assert not np.allclose(np.asarray(plain.phi), np.asarray(with_source.phi))
+
+
+@pytest.mark.check("V6")
+@pytest.mark.nightly
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN DISCREPANCY, logged with evidence (OPEN_QUESTIONS J2). The registry requires observed "
+    "order >= 4 for WENO5 and the measurement is ~2.08. The reconstruction itself is verified at "
+    "order 5.13 in test_weno.py, so this is NOT a broken WENO5: the scheme-level order is capped by "
+    "the velocity-extension path, which is second order by construction (central-difference normals "
+    "and a bilinear closest-point gather). The L1 error still falls 155x at dx=20. The requirement "
+    "is NOT changed (S11); it needs an owner decision. See J2 for the experiment that would confirm "
+    "the cap."))
+def test_v6_spatial_order_under_weno5(ledger_measure):
+    """The same refinement study as V6, with the fifth-order scheme.
+
+    Marked xfail(strict) so the shortfall is *recorded* rather than tolerated, and so that a future
+    change which does reach 4 turns this red and forces the finding to be revisited — the same
+    pattern V8 uses.
+    """
+    spacings = [20.0, 10.0, 5.0, 2.5]
+    dt = 0.2 * min(spacings) / RATE
+    n_steps = int(round(T_END / dt))
+
+    errors = {}
+    for scheme in ("godunov", "weno5"):
+        l1s = []
+        for dx in spacings:
+            cfg = dataclasses.replace(_config(dx), spatial_scheme=scheme)
+            material = initial.uniform_material(cfg.grid, MATERIALS)
+            result = solver.solve(cfg, _exact_sdf(cfg.grid, R0), material, {"v_iso": RATE},
+                                  n_steps=n_steps, dt=dt, capacity=16384)
+            assert result.max_cfl <= 0.5
+            exact = _exact_sdf(cfg.grid, R0 - RATE * dt * n_steps)
+            l1s.append(_band_errors(result.phi, exact, cfg.grid)[0])
+        errors[scheme] = (l1s, *_observed_order(spacings, l1s))
+
+    weno_l1, weno_order, weno_pairwise = errors["weno5"]
+    godunov_l1, godunov_order, _ = errors["godunov"]
+
+    ledger_measure.update({
+        "spacings_nm": spacings, "dt_s": dt, "n_steps": n_steps,
+        "weno5_l1_nm": weno_l1, "godunov_l1_nm": godunov_l1,
+        "weno5_observed_order": weno_order, "godunov_observed_order": godunov_order,
+        "weno5_pairwise": weno_pairwise,
+        "error_ratio_at_dx20": godunov_l1[0] / weno_l1[0],
+        "requirement": "WENO5 >= 4 (§8.2)", "reconstruction_order_measured": 5.13,
+        "hypothesis": "capped by the 2nd-order velocity-extension path: central-difference normals "
+                      "and bilinear closest-point gather",
+        "finding": "J2 (needs an owner decision)"})
+
+    assert weno_l1[0] < godunov_l1[0] / 100.0, "WENO5 must at least cut the error constant"
+    assert weno_order >= 4.0, (
+        f"observed WENO5 order {weno_order:.3f} < 4 (§8.2) — record as a finding with the "
+        f"reconstruction-order evidence alongside, do not change the requirement (§11)")
+

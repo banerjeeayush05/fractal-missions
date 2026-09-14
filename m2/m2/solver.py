@@ -81,12 +81,12 @@ def rate_field(
     return dense, selection.n_active
 
 
-def _advect(phi: jax.Array, rate: jax.Array, grid: Grid) -> jax.Array:
+def _advect(phi: jax.Array, rate: jax.Array, grid: Grid, scheme: str = "godunov") -> jax.Array:
     """dφ/dt = +R|∇φ| (decision §1: a positive rate removes material)."""
     from m2.stencils import godunov_grad_norm
 
     # φ_t + F|∇φ| = 0 with F = −R fixes the upwind direction.
-    grad_norm = godunov_grad_norm(phi, grid, -rate)
+    grad_norm = godunov_grad_norm(phi, grid, -rate, scheme)
     return DPHI_DT_RATE_SIGN * rate * grad_norm
 
 
@@ -105,6 +105,7 @@ def step(
     time: float,
     n_reinit: int = 0,
     reinit_every: int = 1,
+    scheme: str = "godunov",
     source: Callable[[float], jax.Array] | None = None,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """One TVD-RK2 (Heun) step, with reinitialisation on the fixed schedule.
@@ -121,13 +122,13 @@ def step(
                   step_index=step_index)
 
     rate0, active0 = rate_field(phi, material, params, time=time, stage_index=0, **kwargs)
-    rhs0 = _advect(phi, rate0, grid)
+    rhs0 = _advect(phi, rate0, grid, scheme)
     if source is not None:
         rhs0 = rhs0 + source(time)
     phi_euler = phi + dt * rhs0
 
     rate1, active1 = rate_field(phi_euler, material, params, time=time + dt, stage_index=1, **kwargs)
-    rhs1 = _advect(phi_euler, rate1, grid)
+    rhs1 = _advect(phi_euler, rate1, grid, scheme)
     if source is not None:
         rhs1 = rhs1 + source(time + dt)
     phi_next = 0.5 * (phi + phi_euler + dt * rhs1)
@@ -136,7 +137,8 @@ def step(
         # The schedule is a function of the step index only — data-independent, so `lax.cond`
         # selects when to repair, never how many iterations to run (§5.2, §5.3).
         due = (step_index + 1) % reinit_every == 0
-        phi_next = jax.lax.cond(due, lambda p: reinitialise(p, grid, n_reinit), lambda p: p, phi_next)
+        phi_next = jax.lax.cond(due, lambda p: reinitialise(p, grid, n_reinit, scheme=scheme),
+                                lambda p: p, phi_next)
 
     cfl = jnp.maximum(jnp.max(jnp.abs(rate0)), jnp.max(jnp.abs(rate1))) * dt / grid.spacing_nm
     return phi_next, cfl, jnp.maximum(active0, active1)
@@ -170,7 +172,8 @@ def solve(
         phi_next, cfl, occupancy = step(phi, material, params, grid=cfg.grid, bands=cfg.bands,
                                         model=model, capacity=capacity, dt=h, step_index=i,
                                         run_seed=cfg.seed, time=t, n_reinit=cfg.n_reinit,
-                                        reinit_every=cfg.reinit_every, source=source)
+                                        reinit_every=cfg.reinit_every, scheme=cfg.spatial_scheme,
+                                        source=source)
         return (phi_next, t + h), (cfl, occupancy)
 
     (phi_final, _), (cfls, occupancies) = jax.lax.scan(body, (phi0, 0.0), jnp.arange(n))
@@ -203,7 +206,8 @@ def final_phi(cfg: M2Config, phi0: jax.Array, material: jax.Array, params: Any,
         phi, t = carry
         phi_next, _, _ = step(phi, material, params, grid=cfg.grid, bands=cfg.bands, model=model,
                               capacity=capacity, dt=cfg.dt_s, step_index=i, run_seed=cfg.seed,
-                              time=t, n_reinit=cfg.n_reinit, reinit_every=cfg.reinit_every)
+                              time=t, n_reinit=cfg.n_reinit, reinit_every=cfg.reinit_every,
+                              scheme=cfg.spatial_scheme)
         return (phi_next, t + cfg.dt_s), None
 
     (phi_out, _), _ = jax.lax.scan(body, (phi0, 0.0), jnp.arange(cfg.n_steps))

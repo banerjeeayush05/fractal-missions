@@ -133,6 +133,55 @@ def estimate_noise_floor(J: Callable[[jax.Array], Any], x0: jax.Array, *, n_step
     return spread, max(spread, float(roundoff))
 
 
+def _cancellation_ceiling(hs: np.ndarray, R: np.ndarray, above: np.ndarray) -> float:
+    """Largest h the window may reach: below the first point where |R| stops growing with h.
+
+    **The invariant.** For a remainder governed by a single leading term, |R| increases
+    monotonically with h. It stops doing so exactly when two terms of opposite sign become
+    comparable and partly cancel. At such a point |R| is anomalously small, the log–log curve has a
+    notch, and a least-squares slope through it is meaningless — it reads shallow on a gradient that
+    is exactly right.
+
+    Measured on the M2.3 disk under WENO5, direction 19 (signed, so the cancellation is visible):
+
+        h        1e-3      3.2e-4    1e-4      3.2e-5    1e-5
+        R       -2.3e-7   -9.4e-7   -9.4e-8   -9.4e-9   -9.4e-10
+                 ^ 40x smaller than the h^2 line predicts; |R| went DOWN as h went UP
+
+    From 3.2e-4 downward each half-decade divides |R| by exactly 10 — slope 2.000. The fit over
+    [1e-5, 1e-3] read 1.359 and failed the check.
+
+    Note it never changes sign: an earlier version of this guard looked for a zero crossing and
+    found none, because the two terms only *nearly* cancel. Monotonicity catches both cases, which
+    is why it is the invariant to test rather than the sign.
+
+    **This cannot hide a wrong gradient.** Two things make that true, and the second matters more
+    than the first. A pure first-order error gives R ~= -(eps.g.delta)*h, strictly monotone, so
+    there is no notch to find and nothing is dropped. And when a wrong gradient *does* produce a
+    notch — its first-order term can cancel against the h^2 term too — the cut still keeps every
+    point BELOW it, which is precisely where the first-order term dominates most strongly and the
+    slope tends to 1. The window is anchored at the floor, so it can only ever be trimmed from the
+    top, never lifted away from the evidence. `tests/test_v19_canary.py` and the long-run canary in
+    `tests/test_gradients_2d.py` pin the consequence: 5 % corruptions are still caught in every
+    component, under both spatial schemes.
+
+    WENO5 is what surfaced this. A first-order scheme's leading error is large enough that the
+    cancellation sits above the scored window; making the scheme accurate brought the h^2 and h^3
+    terms close enough together that it landed inside.
+    """
+    order = np.argsort(hs)  # ascending in h, so the anchor end comes first
+    hs_a, R_a, above_a = hs[order], R[order], above[order]
+    live = np.flatnonzero(above_a & np.isfinite(R_a))
+    if live.size == 0:
+        return float(hs.max())
+    previous = R_a[live[0]]
+    for index in live[1:]:
+        if not R_a[index] > previous:
+            return float(hs_a[index]) * (1.0 - 1e-9)
+        previous = R_a[index]
+    return float(hs.max())
+
+
 def measure_noise_floor(J: Callable[[jax.Array], Any], x0: jax.Array, direction: jax.Array,
                         J0: float, linear: float, *, probe_h: float = TAYLOR_FLOOR_PROBE_H,
                         n_probes: int = 3) -> float:
@@ -212,6 +261,7 @@ def taylor_test(
     failures: list[str] = []
     kept_counts: list[int] = []
     floors: list[float] = []
+    ceilings: list[float] = []
     windows: list[list[float]] = []
     curves: list[list[float]] = []
     for i, d in enumerate(deltas):
@@ -228,6 +278,7 @@ def taylor_test(
         # starts there and reaches `window_decades` upward — the window is found, not assumed.
         above = np.isfinite(R) & (R > floor_margin * floor)
         if above.sum() < TAYLOR_MIN_POINTS_ABOVE_FLOOR:
+            ceilings.append(float(hs.max()))
             kept_counts.append(int(above.sum()))
             windows.append([float("nan"), float("nan")])
             slopes.append(float("nan"))
@@ -238,7 +289,9 @@ def taylor_test(
                             f"belong in V14a–V14c)")
             continue
         h_anchor = float(hs[above].min())
-        keep = above & (hs <= h_anchor * 10.0**window_decades)
+        ceiling = _cancellation_ceiling(hs, R, above)
+        ceilings.append(ceiling)
+        keep = above & (hs <= min(h_anchor * 10.0**window_decades, ceiling))
         kept_counts.append(int(keep.sum()))
         windows.append([h_anchor, float(hs[keep].max())])
         if keep.sum() < TAYLOR_MIN_POINTS_ABOVE_FLOOR:
@@ -284,7 +337,9 @@ def taylor_test(
         "noise_spread": spread,
         "n_steps": n_steps,
         "points_kept_min": int(min(kept_counts)),
-        "scoring": "anchored window: fit the decades above the MEASURED floor (decision I7)",
+        "scoring": "anchored window: fit the decades above the MEASURED floor (decision I7), "
+                   "capped below the first cancellation notch in |R| (finding J1)",
+        "cancellation_capped": int(sum(1 for c in ceilings if c < float(hs.max()))),
         # The whole sweep for one direction, so the three-regime structure of finding I7 is visible
         # in the ledger rather than only in the fitted number: erratic above the kink scale, clean
         # quadratic through the window, flat at the floor.
