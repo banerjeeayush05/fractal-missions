@@ -36,7 +36,7 @@ from geocore.config import CaseConfig, load_case
 from geocore.initial import extrude
 from geocore.materials import Layer, layer_fractions, masked_trench, with_selectivity
 from geocore.schema import Grid
-from geocore.solver import SolvePlan, assert_cfl, evolve
+from geocore.solver import SolvePlan, StepContext, _step, assert_cfl, evolve
 from geocore.velocity import directional
 
 __all__ = ["build_s03", "forward_plan", "gradient_run", "memory_model", "device_peak_gb",
@@ -178,6 +178,72 @@ def gradient_run(run: GateRun, n_steps: int | None = None, capacity: int | None 
             "peak_gb_measured": device_peak_gb()}
 
 
+def profile_components(run: GateRun) -> list[dict]:
+    """Forward and reverse cost of each part of one step, on the real grid.
+
+    An adjoint ratio of 18x is not a checkpointing cost: recomputing the forward pass accounts for one
+    forward (about 4 s of a 78 s backward). Something in the reverse pass is far more expensive than its
+    forward, and this says which piece.
+
+    Each row times `f(phi)` and `grad(sum(f(phi)))` on the S03 grid; the ratio is what matters, not the
+    absolute times.
+    """
+    from geocore.band import build_request, closest_points, gather_to_band, unit_normal
+    from geocore.reinit import reinitialize
+    from geocore.stencils import grad_mag_godunov
+
+    grid, case = run.grid, run.case
+    phi = run.phi0
+    capacity = size_capacity(run, n_steps=10)["capacity"]
+    field = BandedRateField(with_selectivity(directional, case.materials), grid, case.bands,
+                            capacity, run.fractions)
+    speed = jnp.ones(grid.shape)
+    base = SolvePlan.from_case(case)
+    one_step = SolvePlan(grid, base.dt_s, 1, reinit_every=None, n_reinit=base.n_reinit)
+
+    def rate_only(f):
+        return jnp.sum(field(f, run.params, StepContext(jnp.float64(0.0), jnp.int32(0), 0))[0])
+
+    def request_only(f):
+        request, _ = build_request(f, run.fractions, grid, case.bands, capacity, jnp.float64(0.0),
+                                   jnp.int32(0), 0, 0)
+        return jnp.sum(request.positions) + jnp.sum(request.normals)
+
+    def gather_only(f):
+        request, _ = build_request(f, run.fractions, grid, case.bands, capacity, jnp.float64(0.0),
+                                   jnp.int32(0), 0, 0)
+        rate = with_selectivity(directional, case.materials)(request, run.params)
+        return jnp.sum(gather_to_band(rate, request, f, grid, case.bands))
+
+    pieces = {
+        "whole step": lambda f: jnp.sum(_step(f, run.params, field, one_step, jnp.int32(0))[0]),
+        "  rate field (request + model + gather)": rate_only,
+        "    request assembly only": request_only,
+        "    request + gather": gather_only,
+        "    closest points": lambda f: jnp.sum(closest_points(f, grid)),
+        "    unit normals": lambda f: jnp.sum(unit_normal(f, grid)),
+        "  grad_mag (godunov stencil)": lambda f: jnp.sum(grad_mag_godunov(f, speed, grid)),
+        "reinit cycle (5 iterations)": lambda f: jnp.sum(reinitialize(f, grid, case.reinit.n_reinit)),
+    }
+
+    rows = []
+    for name, fn in pieces.items():
+        forward = jax.jit(fn)
+        backward = jax.jit(jax.grad(fn))
+        float(forward(phi)); float(jnp.sum(backward(phi)))
+        start = time.perf_counter()
+        for _ in range(3):
+            float(forward(phi))
+        forward_ms = (time.perf_counter() - start) / 3 * 1000
+        start = time.perf_counter()
+        for _ in range(3):
+            float(jnp.sum(backward(phi)))
+        backward_ms = (time.perf_counter() - start) / 3 * 1000
+        rows.append({"name": name, "forward_ms": forward_ms, "backward_ms": backward_ms,
+                     "ratio": backward_ms / forward_ms})
+    return rows
+
+
 def memory_model(grid: Grid, n_steps: int, k_step: float = K_STEP_3D_GODUNOV,
                  k_reinit: float = K_REINIT_3D_GODUNOV) -> dict:
     """Peak memory for the checkpoint schedule derived from measured k (finding I4)."""
@@ -207,6 +273,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="M2.4 gate run on case S03 in 3D")
     parser.add_argument("--full", action="store_true", help="also run the checkpointed gradient")
     parser.add_argument("--v14", action="store_true", help="also run full-resolution 3D V14")
+    parser.add_argument("--profile", action="store_true",
+                        help="time forward vs reverse for each part of a step")
     parser.add_argument("--steps", type=int, default=None, help="truncate the run (smoke test)")
     parser.add_argument("--segments", type=str, default=None,
                         help="comma-separated checkpoint segment lengths to compare, e.g. 1,2,4")
@@ -262,6 +330,14 @@ def main(argv: list[str] | None = None) -> int:
                   f"{gradient['adjoint_s']:10.2f} s   {gradient['adjoint_ratio']:6.2f}x   "
                   + (f"{measured:8.1f} GB" if measured is not None else "       n/a")
                   + f"   {modelled:9.1f} GB")
+
+    if args.profile:
+        print()
+        print("COMPONENT PROFILE (one step on the real grid; the RATIO is the signal)")
+        print(f"  {'part':42s} {'forward':>10s} {'reverse':>10s} {'ratio':>8s}")
+        for row in profile_components(run):
+            print(f"  {row['name']:42s} {row['forward_ms']:8.1f} ms {row['backward_ms']:8.1f} ms "
+                  f"{row['ratio']:7.1f}x")
 
     if args.v14:
         from geocore.functionals import solid_volume
