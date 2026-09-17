@@ -30,7 +30,7 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from geocore.band import BandedRateField, occupancy
+from geocore.band import BandedRateField, assert_capacity, occupancy
 from geocore.checkpoint import peak_fields, segment_length_for
 from geocore.config import CaseConfig, load_case
 from geocore.initial import extrude
@@ -80,9 +80,14 @@ def build_s03() -> GateRun:
     return GateRun(case, grid, extrude(profile, grid), fractions, params)
 
 
-def forward_plan(run: GateRun, n_steps: int | None = None, capacity: int | None = None) -> dict:
+def forward_plan(run: GateRun, n_steps: int | None = None, capacity: int | None = None,
+                 assert_ok: bool = True) -> dict:
     """Run the forward solve and report what a GPU run needs to know: CFL, the WORST-step band
-    occupancy that sizes K, and warm wall-clock."""
+    occupancy that sizes K, and warm wall-clock.
+
+    `assert_ok=False` is for the SIZING probe only, which runs deliberately with a capacity that may
+    be too small in order to discover the worst-step occupancy. Every real run asserts.
+    """
     case, grid = run.case, run.grid
     steps = n_steps or case.n_steps
     k = capacity or min(grid.n_cells, 3 * int(occupancy(run.phi0, grid, case.bands)))
@@ -102,9 +107,12 @@ def forward_plan(run: GateRun, n_steps: int | None = None, capacity: int | None 
     float(diagnostics.cfl[-1])
     warm = time.perf_counter() - start
 
+    worst = int(jnp.max(diagnostics.occupancy))
+    if assert_ok:
+        assert_capacity(diagnostics.occupancy, k)
     return {"steps": steps, "capacity": k, "max_cfl": assert_cfl(diagnostics.cfl, plan),
             "occupancy_first": int(diagnostics.occupancy[0]),
-            "occupancy_worst": int(jnp.max(diagnostics.occupancy)),
+            "occupancy_worst": worst, "capacity_ok": worst <= k,
             "first_call_s": first, "warm_s": warm, "ms_per_step": warm / steps * 1000.0}
 
 
@@ -122,6 +130,20 @@ def device_peak_gb() -> float | None:
         return None
     peak = stats.get("peak_bytes_in_use") or stats.get("bytes_in_use")
     return None if peak is None else peak / 1e9
+
+
+def size_capacity(run: GateRun, n_steps: int | None = None, margin: float = 1.25) -> dict:
+    """Find the worst-step band occupancy and size K from it, not from the first step.
+
+    The interface lengthens as a trench deepens: on S03 it grew from 37,600 cells to 131,400, and a K
+    sized at 3x the FIRST step silently truncated the request set from step 0 of the real run. The
+    probe runs with a deliberately generous capacity so the count is the true one.
+    """
+    generous = min(run.grid.n_cells, 16 * int(occupancy(run.phi0, run.grid, run.case.bands)))
+    probe = forward_plan(run, n_steps=n_steps, capacity=generous, assert_ok=False)
+    return {"probe_capacity": generous, "occupancy_first": probe["occupancy_first"],
+            "occupancy_worst": probe["occupancy_worst"], "probe_ok": probe["capacity_ok"],
+            "capacity": min(run.grid.n_cells, int(probe["occupancy_worst"] * margin))}
 
 
 def gradient_run(run: GateRun, n_steps: int | None = None, capacity: int | None = None,
@@ -186,10 +208,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--full", action="store_true", help="also run the checkpointed gradient")
     parser.add_argument("--v14", action="store_true", help="also run full-resolution 3D V14")
     parser.add_argument("--steps", type=int, default=None, help="truncate the run (smoke test)")
+    parser.add_argument("--segments", type=str, default=None,
+                        help="comma-separated checkpoint segment lengths to compare, e.g. 1,2,4")
     args = parser.parse_args(argv)
 
     run = build_s03()
     model = memory_model(run.grid, run.case.n_steps)
+    sizing = size_capacity(run, n_steps=args.steps)
     devices = [str(d) for d in jax.devices()]
     print("=" * 78)
     print("M2.4 GATE — case S03, 3D")
@@ -200,12 +225,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"N (derived)          {run.case.n_steps}   mask {run.case.mask_thickness_nm:g} nm "
           f"(provisional)   scheme {SolvePlan.from_case(run.case).spatial_scheme}")
 
-    forward = forward_plan(run, n_steps=args.steps)
+    forward = forward_plan(run, n_steps=args.steps, capacity=sizing["capacity"])
     print()
     print("FORWARD")
     print(f"  max CFL            {forward['max_cfl']:.3f}   (ceiling 0.5)")
     print(f"  band occupancy     {forward['occupancy_first']} first step, "
-          f"{forward['occupancy_worst']} worst of capacity {forward['capacity']}")
+          f"{forward['occupancy_worst']} worst of capacity {forward['capacity']} "
+          f"(sized from the worst step of a probe at capacity {sizing['probe_capacity']})")
     print(f"  warm wall-clock    {forward['warm_s']:.1f} s for {forward['steps']} steps "
           f"({forward['ms_per_step']:.0f} ms/step)          GATE: < 60 s at N = {run.case.n_steps}")
     print(f"  first call         {forward['first_call_s']:.1f} s (compile + run, reported separately)")
@@ -220,19 +246,22 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  unchecked would be {model['unchecked_gb']:,.0f} GB")
 
     if args.full:
-        gradient = gradient_run(run, n_steps=args.steps)
+        segments = [int(v) for v in args.segments.split(",")] if args.segments else [None]
         print()
-        print("GRADIENT (checkpointed)")
-        print(f"  segment L          {gradient['segment']}")
-        print(f"  warm forward       {gradient['forward_s']:.2f} s")
-        print(f"  warm gradient      {gradient['adjoint_s']:.2f} s")
-        print(f"  adjoint ratio      {gradient['adjoint_ratio']:.2f}x"
-              f"                          GATE: <= 4x")
-        measured = gradient["peak_gb_measured"]
-        print(f"  peak memory        "
-              + (f"{measured:.1f} GB                        GATE: < 40 GB"
-                 if measured is not None else
-                 "not reported by this backend (CPU); run on the GPU"))
+        print("GRADIENT (checkpointed)          GATE: ratio <= 4x, peak < 40 GB")
+        print("   L   warm forward   warm gradient   ratio    peak memory   modelled peak")
+        for segment in segments:
+            gradient = gradient_run(run, n_steps=args.steps, capacity=sizing["capacity"],
+                                    segment=segment)
+            measured = gradient["peak_gb_measured"]
+            modelled = memory_model(run.grid, args.steps or run.case.n_steps)["peak_gb"] \
+                if gradient["segment"] == model["segment"] else \
+                (math.ceil((args.steps or run.case.n_steps) / gradient["segment"])
+                 + gradient["segment"] * K_STEP_3D_GODUNOV + K_REINIT_3D_GODUNOV) * model["field_gb"]
+            print(f"  {gradient['segment']:2d}   {gradient['forward_s']:9.2f} s   "
+                  f"{gradient['adjoint_s']:10.2f} s   {gradient['adjoint_ratio']:6.2f}x   "
+                  + (f"{measured:8.1f} GB" if measured is not None else "       n/a")
+                  + f"   {modelled:9.1f} GB")
 
     if args.v14:
         from geocore.functionals import solid_volume
