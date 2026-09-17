@@ -1,0 +1,41 @@
+[project]
+name = "fractal-m2"
+version = "0.1.0"
+description = "M2 — differentiable geometry core (dense level set, JAX, fp64)."
+requires-python = ">=3.11"
+# Dependencies are PRD §10, with one deviation.
+#
+# §10 says `uv add "jax[cuda12]"`. The cuda12 extra has Linux-only wheels, so the literal §10
+# line cannot install on macOS. The marker below installs the CPU build off Linux and the CUDA
+# build on it, so one file serves the laptop and the H100 box. Recorded as OPEN_QUESTIONS B2.
+#
+# Do NOT add: PyTorch, Warp, PETSc, Mitsuba, OptiX, Embree, ViennaPS, or any autodiff framework
+# besides JAX. One autodiff system, so that a gradient bug has one place to be (repo CLAUDE.md).
+# `scipy.optimize` is permitted inside tests/ ONLY, for M2.8; tests/test_environment.py asserts
+# the geocore package never imports it (PRD §10, decision §12).
+dependencies = [
+    "jax>=0.4.35 ; sys_platform != 'linux'",
+    "jax[cuda12]>=0.4.35 ; sys_platform == 'linux'",
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "matplotlib>=3.9",
+    "scikit-image>=0.24",   # V13 independent reference ONLY — never in the differentiated path
+    "pyyaml>=6.0",
+    "omegaconf>=2.3",
+    "pytest>=8.3",
+    "hypothesis>=6.112",
+    "pyvista>=0.44",        # VTK output for the V22 ViennaPS comparison (separate process)
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["geocore"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -p geocore.verification.pytest_plugin"
+# The `check` marker and the tier markers are registered by the plugin itself, from the check
+# registry, so a tier cannot drift out of step with PRD §8.0.

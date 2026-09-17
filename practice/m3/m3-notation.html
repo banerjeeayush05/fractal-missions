@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M3 notation — an interactive plate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#F7F8F6;
+  --plate:#FFFFFF;
+  --ink:#1B2A33;
+  --ink-soft:#55656E;
+  --ink-faint:#8A959B;
+  --rule:#D9DEDC;
+  --silicon:#C9CFC9;
+  --resist:#B8A9D9;
+  --plasma:#E8A33D;
+  --vector:#2E6E8E;
+  --particle:#A63D2F;
+  --field-neg:#8FA3A8;
+  --sans:"IBM Plex Sans",system-ui,sans-serif;
+  --serif:"Source Serif 4",Georgia,serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font-family:var(--sans);font-size:16px;line-height:1.6;
+}
+a{color:var(--vector)}
+
+.masthead{
+  border-bottom:1px solid var(--rule);
+  padding:28px 32px 22px;
+  background:var(--plate);
+}
+.masthead h1{
+  font-family:var(--serif);font-weight:600;font-size:30px;
+  margin:0 0 6px;letter-spacing:-0.01em;line-height:1.2;
+}
+.masthead p{margin:0;color:var(--ink-soft);font-size:14.5px;max-width:64ch}
+
+.shell{display:flex;align-items:flex-start;gap:0;max-width:1240px;margin:0 auto}
+
+.rail{
+  width:132px;flex:0 0 132px;position:sticky;top:0;
+  max-height:100vh;overflow-y:auto;
+  padding:20px 0 40px;border-right:1px solid var(--rule);
+  background:var(--plate);
+}
+.rail button{
+  display:flex;align-items:baseline;gap:10px;width:100%;
+  background:none;border:0;border-left:3px solid transparent;
+  padding:7px 12px 7px 14px;cursor:pointer;text-align:left;
+  color:var(--ink-soft);font-family:var(--sans);
+}
+.rail button:hover{background:var(--ground)}
+.rail button[aria-current="true"]{border-left-color:var(--vector);color:var(--ink);background:var(--ground)}
+.rail .glyph{font-family:var(--serif);font-size:19px;font-style:italic;min-width:34px}
+.rail .word{font-size:11.5px;letter-spacing:0.01em}
+
+.stage{flex:1;min-width:0;padding:30px 32px 90px}
+
+.slide{display:none}
+.slide.on{display:block}
+
+.symbol-head{border-bottom:1px solid var(--rule);padding-bottom:16px;margin-bottom:24px}
+.symbol-head .big{
+  font-family:var(--serif);font-size:40px;font-style:italic;
+  line-height:1.1;margin:0 0 4px;
+}
+.symbol-head .name{font-size:14px;color:var(--ink-faint);margin:0 0 10px}
+.symbol-head .gloss{font-family:var(--serif);font-size:19px;margin:0;max-width:70ch;line-height:1.5}
+
+.figure{
+  background:var(--plate);border:1px solid var(--rule);
+  padding:16px 16px 12px;margin:0 0 8px;position:relative;
+}
+.figure svg{display:block;width:100%;height:auto}
+.figcanvas{position:relative;line-height:0}
+.figcanvas canvas{width:100%;display:block;image-rendering:auto}
+.figcanvas svg{position:absolute;inset:0}
+.figcap{font-size:13px;color:var(--ink-faint);margin:0 0 26px;max-width:74ch}
+
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)}
+.ctl{display:flex;align-items:center;gap:9px;flex:1 1 250px;min-width:200px}
+.ctl label{font-size:12.5px;color:var(--ink-soft);white-space:nowrap}
+.ctl output{font-family:var(--serif);font-size:15px;min-width:56px;text-align:right}
+input[type=range]{flex:1;accent-color:var(--vector);height:20px;min-width:90px}
+.seg{display:inline-flex;border:1px solid var(--rule)}
+.seg button{
+  background:var(--plate);border:0;padding:6px 13px;cursor:pointer;
+  font-family:var(--sans);font-size:12.5px;color:var(--ink-soft);
+}
+.seg button + button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--plate)}
+.plain-btn{
+  background:var(--plate);border:1px solid var(--rule);padding:6px 14px;
+  cursor:pointer;font-family:var(--sans);font-size:12.5px;color:var(--ink);
+}
+.plain-btn:hover{border-color:var(--vector)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--vector);outline-offset:2px}
+
+.readout{display:flex;flex-wrap:wrap;gap:20px;margin-top:12px}
+.readout div{min-width:110px}
+.readout dt{font-size:11.5px;color:var(--ink-faint);margin:0}
+.readout dd{font-family:var(--serif);font-size:17px;margin:1px 0 0}
+
+.prose{max-width:70ch}
+.prose h3{
+  font-family:var(--sans);font-size:12.5px;font-weight:600;
+  color:var(--ink-faint);margin:26px 0 8px;
+}
+.prose p{font-family:var(--serif);font-size:17px;line-height:1.62;margin:0 0 13px}
+.prose ul{font-family:var(--serif);font-size:17px;line-height:1.6;padding-left:20px;margin:0 0 13px}
+.prose li{margin-bottom:6px}
+.eq{
+  font-family:var(--serif);font-size:18px;font-style:italic;
+  background:var(--plate);border-left:3px solid var(--vector);
+  padding:11px 16px;margin:15px 0;overflow-x:auto;white-space:nowrap;
+}
+.flag{
+  border-left:3px solid var(--particle);background:var(--plate);
+  padding:11px 16px;margin:16px 0;font-family:var(--serif);font-size:16px;
+}
+.flag b{font-family:var(--sans);font-size:12px;font-weight:600;color:var(--particle);display:block;margin-bottom:3px}
+
+.pager{
+  display:flex;align-items:center;gap:16px;margin-top:36px;
+  padding-top:18px;border-top:1px solid var(--rule);
+}
+.pager .count{font-size:12.5px;color:var(--ink-faint);margin-left:auto}
+
+.figure svg text{font-family:var(--sans)}
+.figure svg text.m{font-family:var(--serif);font-style:italic}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+@media (max-width:820px){
+  .shell{flex-direction:column;align-items:stretch}
+  .stage{width:100%;min-width:0}
+  .symbol-head .gloss{font-size:17px}
+  .rail{
+    position:static;width:100%;flex:none;max-height:none;
+    display:flex;overflow-x:auto;border-right:0;border-bottom:1px solid var(--rule);padding:0;
+  }
+  .rail button{width:auto;flex:0 0 auto;flex-direction:column;gap:0;align-items:center;
+    border-left:0;border-bottom:3px solid transparent;padding:9px 13px}
+  .rail button[aria-current="true"]{border-left-color:transparent;border-bottom-color:var(--vector)}
+  .rail .word{display:none}
+  .stage{padding:22px 18px 70px}
+  .masthead{padding:20px 18px 16px}
+  .masthead h1{font-size:24px}
+  .symbol-head .big{font-size:31px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <h1>The notation of M3, drawn</h1>
+  <p>Every symbol in §0.3, with the thing it describes moving on screen. Pick a symbol from the index, or step through in order. The trench is drawn schematically — a real 100 nm × 1000 nm feature would be a hairline at this width, and its visible cones correspondingly narrower.</p>
+</header>
+
+<div class="shell">
+  <nav class="rail" id="rail" aria-label="Notation index"></nav>
+  <main class="stage" id="stage"></main>
+</div>
+
+<script>
+/* ---------- shared scene geometry ---------- */
+var W=560,H=360;
+var MASK_Y=60, MASK_B=90, WL=230, WR=330, FLR=300, DOM_B=350, LX=40, RX=520;
+var SEGS=[[WL,MASK_Y,WL,FLR],[WR,MASK_Y,WR,FLR],[WL,FLR,WR,FLR],[LX,MASK_Y,WL,MASK_Y],[WR,MASK_Y,RX,MASK_Y]];
+
+function defsArrow(){
+  return '<defs><marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">'+
+  '<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>';
+}
+function trench(opt){
+  opt=opt||{};
+  var wl=opt.wl!==undefined?opt.wl:WL, wr=opt.wr!==undefined?opt.wr:WR;
+  var s='';
+  s+='<rect x="0" y="0" width="'+W+'" height="'+MASK_Y+'" fill="#FDF6E8"/>';
+  s+='<rect x="'+LX+'" y="'+MASK_B+'" width="'+(wl-LX)+'" height="'+(DOM_B-MASK_B)+'" fill="#C9CFC9"/>';
+  s+='<rect x="'+wr+'" y="'+MASK_B+'" width="'+(RX-wr)+'" height="'+(DOM_B-MASK_B)+'" fill="#C9CFC9"/>';
+  s+='<rect x="'+wl+'" y="'+FLR+'" width="'+(wr-wl)+'" height="'+(DOM_B-FLR)+'" fill="#C9CFC9"/>';
+  s+='<rect x="'+LX+'" y="'+MASK_Y+'" width="'+(wl-LX)+'" height="'+(MASK_B-MASK_Y)+'" fill="#B8A9D9" opacity="0.55"/>';
+  s+='<rect x="'+wr+'" y="'+MASK_Y+'" width="'+(RX-wr)+'" height="'+(MASK_B-MASK_Y)+'" fill="#B8A9D9" opacity="0.55"/>';
+  s+='<path d="M'+LX+' '+MASK_Y+'H'+wl+'V'+FLR+'H'+wr+'V'+MASK_Y+'H'+RX+'" fill="none" stroke="#1B2A33" stroke-width="1.4"/>';
+  s+='<text x="'+((LX+wl)/2)+'" y="'+(MASK_Y+20)+'" text-anchor="middle" font-size="11" fill="#5B4E77">mask</text>';
+  s+='<text x="'+((LX+wl)/2)+'" y="'+(MASK_B+34)+'" text-anchor="middle" font-size="11" fill="#4C5B52">silicon</text>';
+  if(opt.sky!==false) s+='<text x="'+(W/2)+'" y="26" text-anchor="middle" font-size="11.5" fill="#9A7A33">plasma</text>';
+  return s;
+}
+function cast(ox,oy,dx,dy,segs){
+  segs=segs||SEGS; var best=1e9,nm=null,i;
+  for(i=0;i<segs.length;i++){
+    var q=segs[i],ax=q[0],ay=q[1],ex=q[2]-q[0],ey=q[3]-q[1];
+    var den=dx*ey-dy*ex; if(Math.abs(den)<1e-9) continue;
+    var t=((ax-ox)*ey-(ay-oy)*ex)/den, u=((ax-ox)*dy-(ay-oy)*dx)/den;
+    if(t>0.02&&u>=-0.002&&u<=1.002&&t<best){best=t;nm=i;}
+  }
+  return nm===null?null:{t:best,seg:nm};
+}
+function arrow(a,b,c,d,col,w,dash){
+  return '<line x1="'+a.toFixed(1)+'" y1="'+b.toFixed(1)+'" x2="'+c.toFixed(1)+'" y2="'+d.toFixed(1)+
+  '" stroke="'+col+'" stroke-width="'+(w||2.2)+'" stroke-linecap="round" marker-end="url(#ah)"'+
+  (dash?' stroke-dasharray="5 4"':'')+'/>';
+}
+function lbl(x,y,t,col,sz,anch){
+  return '<text x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" text-anchor="'+(anch||'middle')+
+  '" class="m" font-style="italic" font-size="'+(sz||16)+'" fill="'+col+'">'+t+'</text>';
+}
+function tag(x,y,t,col,sz,anch){
+  return '<text x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" text-anchor="'+(anch||'middle')+
+  '" font-size="'+(sz||11)+'" fill="'+col+'">'+t+'</text>';
+}
+function fanWedges(px,py,na,R,fn){
+  var s='',N=54,i;
+  for(i=0;i<N;i++){
+    var p1=-90+180*i/N,p2=-90+180*(i+1)/N,pm=(p1+p2)/2;
+    var a1=na+p1*Math.PI/180,a2=na+p2*Math.PI/180;
+    var c=fn(pm);
+    s+='<path d="M'+px+' '+py+' L'+(px+R*Math.cos(a1)).toFixed(1)+' '+(py+R*Math.sin(a1)).toFixed(1)+
+    ' A'+R+' '+R+' 0 0 1 '+(px+R*Math.cos(a2)).toFixed(1)+' '+(py+R*Math.sin(a2)).toFixed(1)+
+    ' Z" fill="'+c[0]+'" opacity="'+c[1]+'"/>';
+  }
+  return s;
+}
+
+/* ---------- slide definitions ---------- */
+var SLIDES=[];
+function S(o){SLIDES.push(o);}
+
+S({g:'S',word:'surface',name:'S \u2282 \u211D\u00B3',
+gloss:'The surface: every point where \u03C6 is exactly zero. \u03C6 &lt; 0 inside solid, &gt; 0 in the void.',
+fig:'<div class="figcanvas"><canvas id="phiC" width="560" height="360"></canvas><svg viewBox="0 0 560 360" id="phiO" aria-hidden="true"></svg></div>',
+cap:'The shading is \u03C6 itself. Green-grey is solid (\u03C6 &lt; 0), pale is void (\u03C6 &gt; 0), and the bands are lines of constant \u03C6.',
+ctl:'<div class="ctl"><label for="c1">contour at \u03C6 =</label><input type="range" id="c1" min="-60" max="60" step="1" value="0"><output id="c1o">0</output></div>',
+plain:'<p>You never store the surface. You store a number at every grid cell \u2014 how far that cell is from the surface, negative if it is buried in silicon, positive if it is out in the open. The surface is wherever that number crosses zero.</p><p>Drag the slider. You are selecting a different contour of the same field. At zero you get the trench wall itself; away from zero you get surfaces parallel to it, sitting inside the solid or out in the gas.</p><p>The reason for this indirection is robustness. Track the surface as a list of points and you must hand-code what happens when two etch fronts merge or a void pinches off. Track it as a contour of a smooth field and those events need no code at all \u2014 the contour reconnects on its own.</p>',
+formal:'<p>M2 maintains \u03C6 as a signed distance function on a dense grid, so |\u2207\u03C6| = 1 away from the medial axis. The surface is the zero level set</p><div class="eq">S(t) = { x \u2208 \u211D\u00B3 : \u03C6(x, t) = 0 }</div><p>a codimension-one embedded submanifold wherever \u2207\u03C6 \u2260 0. The sign convention \u2014 \u03C6 &lt; 0 inside solid \u2014 is fixed in M2 PRD \u00A75.1 and asserted on import by M3 PRD \u00A714.</p><p>Evolution is by the Hamilton\u2013Jacobi equation \u2202\u03C6/\u2202t + V|\u2207\u03C6| = 0. Advection alone does not preserve |\u2207\u03C6| = 1, so reinitialisation re-imposes it for a fixed iteration count, without moving the zero set. Check V12 verifies exactly that: interface drift per reinit cycle below 0.1%.</p>',
+flag:'<b>Why M3 depends on this</b>Sphere tracing steps along a ray by |\u03C6|, which is only safe if \u03C6 is genuinely 1-Lipschitz. V11 tolerates ||\u2207\u03C6| \u2212 1| up to 5%, and a trilinear interpolant carries no Lipschitz guarantee, so the step should be \u03BA\u03C6 with \u03BA &lt; 1/Lip(\u03C6). Reinitialisation is not housekeeping here; it is what makes M3\u2019s ray caster correct.',
+init:function(){
+  var cv=document.getElementById('phiC'),ctx=cv.getContext('2d');
+  var img=ctx.createImageData(cv.width,cv.height);
+  function sdBox(px,py,cx,cy,hx,hy){
+    var dx=Math.abs(px-cx)-hx, dy=Math.abs(py-cy)-hy;
+    return Math.hypot(Math.max(dx,0),Math.max(dy,0))+Math.min(Math.max(dx,dy),0);
+  }
+  function phi(px,py){ return -Math.min(py-MASK_Y, sdBox(px,py,(WL+WR)/2,(MASK_Y+FLR)/2,(WR-WL)/2,(FLR-MASK_Y)/2)); }
+  var cache=new Float32Array(cv.width*cv.height),ix,iy;
+  for(iy=0;iy<cv.height;iy++)for(ix=0;ix<cv.width;ix++)cache[iy*cv.width+ix]=phi(ix,iy);
+  function paint(c){
+    var d=img.data,i;
+    for(i=0;i<cache.length;i++){
+      var p=cache[i],band=Math.abs(((p%18)+18)%18-9)/9,r,g,b;
+      if(p<0){r=155+40*band;g=172+38*band;b=157+40*band;}
+      else{r=249-14*band;g=248-16*band;b=243-18*band;}
+      if(Math.abs(p-c)<1.6){r=46;g=110;b=142;}
+      d[i*4]=r;d[i*4+1]=g;d[i*4+2]=b;d[i*4+3]=255;
+    }
+    ctx.putImageData(img,0,0);
+  }
+  var ov=document.getElementById('phiO');
+  function up(){
+    var c=+document.getElementById('c1').value;
+    document.getElementById('c1o').textContent=c;
+    paint(c);
+    ov.innerHTML=tag(W/2,26,'plasma','#9A7A33',11.5)+
+      tag(140,150,'\u03C6 < 0','#3F5148',13)+tag(280,150,'\u03C6 > 0','#7E8A80',13)+
+      lbl(430,332,c===0?'S = { \u03C6 = 0 }':'\u03C6 = '+c,'#2E6E8E',15);
+  }
+  document.getElementById('c1').oninput=up; up();
+}});
+
+S({g:'n',word:'normal',name:'n(x)',
+gloss:'The outward unit normal at a surface point \u2014 which way that patch of wall faces, pointing into the void.',
+fig:'<svg viewBox="0 0 560 360" id="f2"></svg>',
+cap:'The normal is a property of the wall, not of the room. It swings as you move around the feature.',
+ctl:'<div class="ctl"><label for="c2">walk around the profile</label><input type="range" id="c2" min="0" max="100" step="1" value="18"><output id="c2o"></output></div>',
+plain:'<p>A common first guess is that the normal points up. It does at the trench floor, and it does on top of the mask. On the left sidewall it points right; on the right sidewall it points left. Under an overhang it would point down.</p><p>What is fixed is not a direction but a <em>side</em>. The normal always points out of the solid and into the empty space, wherever that happens to be.</p><p>Slide along the profile and watch it rotate. Every quantity built on the normal \u2014 the hemisphere, the cosine, the angle an ion strikes at \u2014 rotates with it.</p>',
+formal:'<p>For x \u2208 S with \u2207\u03C6(x) \u2260 0,</p><div class="eq">n(x) = \u2207\u03C6(x) / |\u2207\u03C6(x)|</div><p>Since \u03C6 increases from solid to void, \u2207\u03C6 points outward. Under the signed-distance property |\u2207\u03C6| = 1 the normalisation is the identity and n = \u2207\u03C6 directly.</p><p>In code n comes from a finite-difference stencil, so it is differentiable in \u03C6 and hence in \u03B8. It is a section of the normal bundle of S: smooth wherever S is smooth, undefined at corners where \u2207\u03C6 is discontinuous, and singular where \u2207\u03C6 = 0.</p><p>Every hemisphere, every cosine and every local frame in M3 is built from n, so there is no global frame in which all hemispheres point the same way. Implementations construct an orthonormal frame (t\u2081, t\u2082, n) per surface point; the construction must be branchless, since a branch on n introduces a discontinuity in the sampled direction as a function of \u03B8.</p>',
+flag:'<b>A sign left unstated</b>M2\u2019s analytic model V = v\u2080\u00B7max(0, n\u00B7\u1E91)\u1D56 gives V &gt; 0 on upward-facing surfaces. Under \u2202\u03C6/\u2202t + V|\u2207\u03C6| = 0 that is deposition, not etching. Etching needs v\u2080 &lt; 0. The PRD states neither \u1E91\u2019s orientation nor v\u2080\u2019s sign.',
+init:function(){
+  var pts=[],i;
+  for(i=0;i<=100;i++){
+    var u=i/100,x,y,nx,ny,nm;
+    if(u<0.22){x=LX+20+(WL-LX-40)*(u/0.22);y=MASK_Y;nx=0;ny=-1;nm='mask top';}
+    else if(u<0.5){x=WL;y=MASK_Y+(FLR-MASK_Y)*((u-0.22)/0.28);nx=1;ny=0;nm='left sidewall';}
+    else if(u<0.66){x=WL+(WR-WL)*((u-0.5)/0.16);y=FLR;nx=0;ny=-1;nm='trench floor';}
+    else if(u<0.86){x=WR;y=FLR-(FLR-MASK_Y)*((u-0.66)/0.2);nx=-1;ny=0;nm='right sidewall';}
+    else{x=WR+20+(RX-WR-40)*((u-0.86)/0.14);y=MASK_Y;nx=0;ny=-1;nm='mask top';}
+    pts.push({x:x,y:y,nx:nx,ny:ny,nm:nm});
+  }
+  function up(){
+    var p=pts[+document.getElementById('c2').value];
+    document.getElementById('c2o').textContent='';
+    var g=defsArrow()+trench()+
+      arrow(p.x,p.y,p.x+p.nx*54,p.y+p.ny*54,'#2E6E8E',2.6)+
+      lbl(p.x+p.nx*70,p.y+p.ny*70+5,'n','#2E6E8E',18)+
+      '<circle cx="'+p.x+'" cy="'+p.y+'" r="5" fill="#1B2A33"/>'+
+      lbl(p.x+(p.nx?0:0)-16,p.y+(p.ny?24:-12),'x','#1B2A33',17)+
+      tag(W/2,342,p.nm+'  \u2014  n = ('+p.nx+', '+(-p.ny)+')','#55656E',12);
+    document.getElementById('f2').innerHTML=g;
+  }
+  document.getElementById('c2').oninput=up; up();
+}});
+
+S({g:'\u03C9',word:'direction',name:'\u03C9 \u2208 S\u00B2',
+gloss:'A unit direction. Always points AWAY from the surface point being discussed \u2014 so for an arrival it runs backwards along the flight path.',
+fig:'<svg viewBox="0 0 560 360" id="f3"></svg>',
+cap:'Blue is the normal, teal is \u03C9, brick dashed is the particle actually flying. \u03C9 and the particle always disagree on an arrival.',
+ctl:'<div class="ctl"><label for="c3">\u03C8 from the normal</label><input type="range" id="c3" min="-84" max="84" step="1" value="-52"><output id="c3o">\u221252\u00B0</output></div>',
+plain:'<p>A fluorine atom drifts down the trench and lands on the sidewall. Its actual direction of travel is down-and-into the wall. The convention describes that arrival with the opposite arrow: pointing back out of the wall, up toward where the atom came from.</p><p>One flip at the definition, and then no flips ever again. Because \u03C9 sits on the open side, the cosine against the normal is always positive, the hemisphere is always the same half, and the ray you fire to find the source travels along \u03C9 rather than against it.</p><p>The word &ldquo;incoming&rdquo; later on refers to which side of an interaction is being named \u2014 not to which way the arrow points. Every arrow in this notation points outward into the void.</p>',
+formal:'<p>Let d be a particle\u2019s unit velocity. At an arrival point x we have d\u00B7n(x) &lt; 0, and the convention sets</p><div class="eq">\u03C9 \u2261 \u2212d,  so \u03C9\u00B7n(x) &gt; 0, i.e. \u03C9 \u2208 H(x)</div><p>Two requirements force this. First, \u03BC = \u03C9\u00B7n must be positive on every direction under discussion, so no sign handling is needed. Second, r(x, \u03C9) searches along {x + t\u03C9 : t &gt; 0}, outward from the surface \u2014 which is only the source direction if \u03C9 points into the void.</p><p>The notation L\u209B(x \u2190 \u03C9) reads &ldquo;arriving at x from the \u03C9 side&rdquo;. The arrow marks the destination; the particle travelled along \u2212\u03C9.</p><p>The single invariant, worth asserting once and never varying: for every direction symbol \u03C3 appearing in an expression evaluated at a point z, \u03C3\u00B7n(z) &gt; 0.</p>',
+flag:'<b>The failure this prevents</b>Use d in place of \u03C9 and \u03BC comes out negative. Inside a max(0, \u00B7) guard the sidewall silently receives zero flux; without a guard, the flux goes negative. Neither shows on a flat-wafer smoke test \u2014 it appears as one wall of a trench refusing to etch.',
+init:function(){
+  var P={x:WL,y:190,nx:1,ny:0};
+  function up(){
+    var psi=+document.getElementById('c3').value,r=Math.PI/180;
+    document.getElementById('c3o').textContent=(psi<0?'\u2212':'')+Math.abs(psi)+'\u00B0';
+    var a=Math.atan2(P.ny,P.nx)+psi*r,wx=Math.cos(a),wy=Math.sin(a);
+    var hit=cast(P.x+P.nx*0.6,P.y+P.ny*0.6,wx,wy),L=hit?hit.t:150;
+    var g=defsArrow()+trench()+
+      arrow(P.x,P.y,P.x+P.nx*44,P.y+P.ny*44,'#2E6E8E',2.4)+
+      lbl(P.x+P.nx*58,P.y+5,'n','#2E6E8E',17)+
+      arrow(P.x,P.y,P.x+wx*96,P.y+wy*96,'#1D7A63',2.6)+
+      lbl(P.x+wx*112,P.y+wy*112+5,'\u03C9','#1D7A63',19)+
+      arrow(P.x-wx*86,P.y-wy*86,P.x-wx*16,P.y-wy*16,'#A63D2F',2,1)+
+      tag(P.x-wx*104,P.y-wy*104+4,'particle','#A63D2F',11)+
+      '<circle cx="'+P.x+'" cy="'+P.y+'" r="5" fill="#1B2A33"/>'+
+      lbl(P.x-16,P.y+22,'x','#1B2A33',17)+
+      tag(W/2,342,'\u03C9\u00B7n = '+Math.cos(psi*r).toFixed(3)+'   \u2014   d\u00B7n = '+(-Math.cos(psi*r)).toFixed(3)+'  (the reason \u03C9 is defined as \u2212d)','#55656E',12);
+    document.getElementById('f3').innerHTML=g;
+  }
+  document.getElementById('c3').oninput=up; up();
+}});
+
+S({g:'H',word:'hemisphere',name:'H(x)',
+gloss:'The set of directions on the open side of the surface at x. Exactly half of all directions, always.',
+fig:'<svg viewBox="0 0 560 360" id="f4"></svg>',
+cap:'The fan is H(x). Amber slices escape to the plasma; pale slices are looking at another wall.',
+ctl:'<div class="seg" role="group" aria-label="surface point"><button data-p="0" aria-pressed="true">Left sidewall</button><button data-p="1" aria-pressed="false">Trench floor</button><button data-p="2" aria-pressed="false">Mask top</button></div>',
+plain:'<p>Stand on the sidewall and look around. Half of every possible direction is impossible \u2014 it is inside the silicon behind you. H is the other half: a dome planted on the wall, bulging out into the trench.</p><p>Two different kinds of blocking live here, and keeping them apart is the whole point. The wall you are standing on blocks half the sphere, always, at every point of every geometry. That is what defining H handles. The <em>rest of the trench</em> blocks most of what remains \u2014 and that part varies wildly, changes as the feature etches, and is where all the difficulty is.</p><p>Switch to the mask top: the entire dome is amber, nothing occludes it. Switch to the sidewall: a narrow slot of sky and the rest is opposite wall.</p>',
+formal:'<div class="eq">H(x) = { \u03C9 \u2208 S\u00B2 : \u03C9\u00B7n(x) &gt; 0 },  |H(x)| = 2\u03C0 sr</div><p>The measure is exactly 2\u03C0 regardless of geometric complexity, because H depends on n(x) alone. All global geometry enters through V(x, \u03C9) and r(x, \u03C9) inside the integrand, never through the domain.</p><p>The equator \u03C9\u00B7n = 0 is excluded. It has measure zero in d\u03C9, so no integral notices \u2014 but it is where the ray is tangent to S, where \u03BC = 0, where sphere tracing stalls, and where the hit-point derivative is singular. Exclusion is bookkeeping; the degeneracy is real.</p><p>Writing H_vis(x) = {\u03C9 \u2208 H(x) : V = 1}, the ratio |H_vis|/|H| is what the readout reports. For a point at depth h on a wall of a trench of width w, the escaping wedge has half-angle arctan(w/h) \u2014 so a 10:1 feature admits about 3% of the dome at mid-depth.</p><p>In 2D, H is a half-circle of measure \u03C0, and the cosine-weighted mass \u222B\u03BC d\u03C9 is 2, not \u03C0.</p>',
+init:function(){
+  var pts=[{x:WL,y:190,na:0,nm:'left sidewall'},{x:(WL+WR)/2,y:FLR,na:-Math.PI/2,nm:'trench floor'},{x:140,y:MASK_Y,na:-Math.PI/2,nm:'mask top'}];
+  var cur=0;
+  function up(){
+    var P=pts[cur],vis=0,N=54,i;
+    var sx=P.x+Math.cos(P.na)*0.6, sy=P.y+Math.sin(P.na)*0.6;
+    var wedges=fanWedges(P.x,P.y,P.na,78,function(pm){
+      var a=P.na+pm*Math.PI/180,h=cast(sx,sy,Math.cos(a),Math.sin(a));
+      if(!h)vis++; return h?['#1B2A33',0.07]:['#E8A33D',0.42];
+    });
+    var g=defsArrow()+trench()+wedges+
+      arrow(P.x,P.y,P.x+Math.cos(P.na)*46,P.y+Math.sin(P.na)*46,'#2E6E8E',2.4)+
+      lbl(P.x+Math.cos(P.na)*62,P.y+Math.sin(P.na)*62+5,'n','#2E6E8E',17)+
+      '<circle cx="'+P.x+'" cy="'+P.y+'" r="5" fill="#1B2A33"/>'+
+      tag(W/2,342,P.nm+'  \u2014  |H| = 2\u03C0 always  \u2014  visible share \u2248 '+Math.round(100*vis/N)+'%','#55656E',12);
+    document.getElementById('f4').innerHTML=g;
+  }
+  var bs=document.querySelectorAll('[data-p]');
+  bs.forEach(function(b){b.onclick=function(){cur=+b.dataset.p;bs.forEach(function(o){o.setAttribute('aria-pressed',o===b);});up();};});
+  up();
+}});
+
+S({g:'\u03BC',word:'cosine',name:'\u03BC = \u03C9\u00B7n(x)',
+gloss:'How square-on a direction is to the surface. One head-on, zero at grazing.',
+fig:'<svg viewBox="0 0 560 360" id="f5"></svg>',
+cap:'A beam of fixed width, striking at increasing tilt. The particle count never changes; the patch it lands on grows.',
+ctl:'<div class="ctl"><label for="c5">incidence \u03C7</label><input type="range" id="c5" min="0" max="72" step="1" value="40"><output id="c5o">40\u00B0</output></div>',
+plain:'<p>Fire a beam one nanometre wide straight at a wall and it lands on one nanometre of wall. Tilt it to sixty degrees and the same beam smears over two nanometres. Nothing was absorbed. The particles simply spread, so each unit of wall gets fewer.</p><p>This is why winter is cold at high latitude, and it is the only reason a cosine appears in the flux integral. \u03BC is the spreading factor.</p><p>It is also why sidewalls barely etch. Ions arrive nearly vertical. The trench floor faces them head-on, \u03BC \u2248 1. A vertical sidewall is edge-on, \u03BC \u2248 0.02. The wall is protected by geometry before any passivation chemistry is invoked.</p>',
+formal:'<p>A pencil of directions d\u03C9 carrying radiance L through a cross-section dA\u22A5 deposits particles over a surface patch dA with dA\u22A5 = dA\u00B7cos \u03C7. Hence the rate per unit <em>surface</em> area is</p><div class="eq">d\u0393 = L \u00B7 (dA\u22A5/dA) d\u03C9 = L \u03BC d\u03C9</div><p>so \u03BC is a change-of-variables Jacobian between two area conventions, not an attenuation. Its total mass over the hemisphere is</p><div class="eq">\u222B_H \u03BC d\u03C9 = \u222B\u2080^{2\u03C0}\u222B\u2080^{\u03C0/2} cos \u03C7 sin \u03C7 d\u03C7 d\u03D5 = \u03C0</div><p>and in a 2D cross-section \u222B cos \u03C8 d\u03C8 = 2. These two constants \u2014 \u03C0 and 2 \u2014 set the Lambertian normalisation in each dimension, and mixing them is a common error when porting 3D formulae into the 2D capstone.</p><p>As \u03BC \u2192 0 three things degenerate at once, and they are one event, tangency: sphere tracing contracts as (1 \u2212 \u03BC) per iteration so the budget diverges as ln(\u03C6\u2080/\u03B5)/\u03BC; the hit-point derivative \u2202t/\u2202\u03B8 = \u2212(\u2202\u03B8\u03C6)/(\u2207\u03C6\u00B7\u03C9) has |\u2207\u03C6\u00B7\u03C9| = \u03BC \u2192 0; and visibility jumps, because a tangent ray is the boundary between hitting and missing.</p>',
+flag:'<b>The cosine that gets counted twice</b>Knudsen\u2019s cosine law describes the <em>arrivals</em>, L\u03BC \u2014 produced by a constant radiance acting through \u03BC. The lesson plan\u2019s (1.4) instead sets L \u221D \u03BC, applying the cosine a second time. It yields (2\u03C0/3)L\u2080 where the answer is \u03C0L\u2080, and check V27 encodes the wrong value. The same double count appears in diffuse(s), where it breaks V23 by a factor 2/3.',
+init:function(){
+  function up(){
+    var chi=+document.getElementById('c5').value,r=Math.PI/180;
+    document.getElementById('c5o').textContent=chi+'\u00B0';
+    var mu=Math.cos(chi*r),cx=300,sy=255,bw=54,Lb=165;
+    var fw=bw/mu, hx=fw/2;
+    var dx=Math.sin(chi*r),dy=Math.cos(chi*r);
+    var qx=Math.cos(chi*r),qy=-Math.sin(chi*r);
+    var P0x=cx-hx,P1x=cx+hx;
+    var Q0x=P0x-dx*Lb,Q0y=sy-dy*Lb,Q1x=P1x-dx*Lb,Q1y=sy-dy*Lb;
+    var g=defsArrow(),i;
+    g+='<rect x="0" y="0" width="560" height="360" fill="#FDFDFB"/>';
+    g+='<rect x="20" y="'+sy+'" width="520" height="70" fill="#C9CFC9"/>';
+    g+='<line x1="20" y1="'+sy+'" x2="540" y2="'+sy+'" stroke="#1B2A33" stroke-width="1.6"/>';
+    g+='<path d="M'+Q0x.toFixed(1)+' '+Q0y.toFixed(1)+' L'+Q1x.toFixed(1)+' '+Q1y.toFixed(1)+' L'+P1x.toFixed(1)+' '+sy+' L'+P0x.toFixed(1)+' '+sy+' Z" fill="#E8A33D" opacity="0.2"/>';
+    for(i=0;i<=8;i++){
+      var f=i/8, ax=Q0x+(Q1x-Q0x)*f, ay=Q0y, bx2=P0x+(P1x-P0x)*f;
+      g+='<line x1="'+ax.toFixed(1)+'" y1="'+ay.toFixed(1)+'" x2="'+bx2.toFixed(1)+'" y2="'+sy+'" stroke="#E8A33D" stroke-width="1.1" opacity="0.85"/>';
+    }
+    var Rx=Q0x+qx*bw, Ry=Q0y+qy*bw;
+    g+='<line x1="'+Q0x.toFixed(1)+'" y1="'+Q0y.toFixed(1)+'" x2="'+Rx.toFixed(1)+'" y2="'+Ry.toFixed(1)+'" stroke="#1B2A33" stroke-width="2.4"/>';
+    g+=tag((Q0x+Rx)/2,Math.min(Q0y,Ry)-14,'dA\u22A5 \u2014 beam width, fixed','#55656E',12);
+    g+='<line x1="'+P0x.toFixed(1)+'" y1="'+(sy+1)+'" x2="'+P1x.toFixed(1)+'" y2="'+(sy+1)+'" stroke="#A63D2F" stroke-width="4.5"/>';
+    g+=tag(cx,sy+34,'dA = dA\u22A5 / \u03BC \u2014 footprint on the wall','#A63D2F',12);
+    g+=arrow(cx,sy,cx,sy-66,'#2E6E8E',2.4);
+    g+='<text x="'+(cx+15)+'" y="'+(sy-62)+'" class="m" font-size="17" fill="#2E6E8E">n</text>';
+    var arc='',k;
+    for(k=0;k<=16;k++){var aa=(-90-chi*k/16)*r;arc+=(k?' L':'M')+(cx+44*Math.cos(aa)).toFixed(1)+' '+(sy+44*Math.sin(aa)).toFixed(1);}
+    g+='<path d="'+arc+'" fill="none" stroke="#55656E" stroke-width="1" stroke-dasharray="3 3"/>';
+    var ma=(-90-chi/2)*r;
+    g+=tag(cx+62*Math.cos(ma),sy+62*Math.sin(ma)+4,'\u03C7','#55656E',13);
+    g+=tag(280,336,'\u03BC = cos \u03C7 = '+mu.toFixed(3)+'   \u2014   the same particles land on '+(1/mu).toFixed(2)+'\u00D7 the area','#55656E',12.5);
+    document.getElementById('f5').innerHTML=g;
+  }
+  document.getElementById('c5').oninput=up; up();
+}});
+
+S({g:'L',word:'radiance',name:'L\u209B(x \u2190 \u03C9)',
+gloss:'How much of species s is flying in one direction, measured across the beam. The analogue of radiance in graphics.',
+fig:'<svg viewBox="0 0 560 360" id="f6"></svg>',
+cap:'The bar height is L. It does not change along the ray. Only at the landing does \u03BC enter.',
+ctl:'<button class="plain-btn" id="c6btn">Send a pulse</button>',
+plain:'<p>L is a property of the beam. Not of the wall it eventually meets, not of any surface at all \u2014 you could measure it in empty space. It says how many particles per second are travelling in a given direction, counted across the beam\u2019s own cross-section.</p><p>That choice of reference plane is what makes the whole architecture work. The value stays the same all the way down the trench. Trace a ray a thousand nanometres, bounce it off three walls, and you carry one number the entire way. The tilt of whatever it finally hits is handled separately, by \u03BC, at the moment of landing.</p><p>Had L been defined per unit of <em>wall</em>, it would change at every encounter, and you would need to know the destination before you could describe the beam \u2014 which is circular, since finding the destination is the point of the ray cast.</p>',
+formal:'<div class="eq">L\u209B(x \u2190 \u03C9) = d\u00B2\u03A6\u209B / (dA\u22A5 d\u03C9)  [m\u207B\u00B2 sr\u207B\u00B9 s\u207B\u00B9]</div><p>The reference area dA\u22A5 is oriented by \u03C9 alone, so no surface normal enters the definition. L is a density with respect to solid angle: a single direction carries measure zero, so only integrals against d\u03C9 are physical.</p><p><strong>Invariance.</strong> Along an unobstructed ray in free-molecular flow, L is constant. The rate between two patches is L\u00B7dA\u2081cos \u03C7\u2081\u00B7dA\u2082cos \u03C7\u2082 / r\u00B2, an expression symmetric in the two indices. Equating the two evaluations gives L\u2081 = L\u2082. The symmetric factor is the throughput, and its conservation is exactly the invariance of L.</p><p>Species are uncoupled in transport at Kn \u2248 2\u00D710\u00B3, since there are no gas-phase collisions inside the feature; they couple only at surfaces, through the closure and through redeposition. Ion radiance additionally carries energy, L\u1D62(x \u2190 \u03C9, E), because M5\u2019s yield is nonlinear in E and must be evaluated per sampled arrival rather than on the mean.</p>',
+init:function(){
+  var raf=null,t0=0;
+  var A={x:330,y:26},B={x:WL,y:210};
+  function frame(ts){
+    if(!t0)t0=ts; var u=Math.min(1,(ts-t0)/2400);
+    draw(u); if(u<1) raf=requestAnimationFrame(frame); else {raf=null;t0=0;}
+  }
+  function draw(u){
+    var dx=B.x-A.x,dy=B.y-A.y,px=A.x+dx*u,py=A.y+dy*u,i;
+    var g=defsArrow()+trench();
+    g+='<line x1="'+A.x+'" y1="'+A.y+'" x2="'+B.x+'" y2="'+B.y+'" stroke="#1B2A33" stroke-width="1" opacity="0.2"/>';
+    var ux=dx/Math.hypot(dx,dy),uy=dy/Math.hypot(dx,dy),qx=-uy,qy=ux;
+    for(i=1;i<=4;i++){
+      var s=i/5,mx=A.x+dx*s,my=A.y+dy*s;
+      g+='<line x1="'+(mx-qx*16)+'" y1="'+(my-qy*16)+'" x2="'+(mx+qx*16)+'" y2="'+(my+qy*16)+'" stroke="#1D7A63" stroke-width="2.4"/>';
+      g+=tag(mx+qx*30,my+qy*30+4,'L','#1D7A63',12);
+    }
+    if(u>0&&u<1) g+='<circle cx="'+px+'" cy="'+py+'" r="6" fill="#E8A33D"/>';
+    g+=arrow(B.x,B.y,B.x+44,B.y,'#2E6E8E',2.3)+lbl(B.x+58,B.y+5,'n','#2E6E8E',16);
+    g+='<circle cx="'+B.x+'" cy="'+B.y+'" r="5" fill="#1B2A33"/>'+lbl(B.x-16,B.y+22,'x','#1B2A33',16);
+    g+=tag(W/2,332,'L is identical at every tick. At x it is multiplied by \u03BC \u2014 once, and only there.','#55656E',12.5);
+    document.getElementById('f6').innerHTML=g;
+  }
+  document.getElementById('c6btn').onclick=function(){if(raf)cancelAnimationFrame(raf);t0=0;raf=requestAnimationFrame(frame);};
+  draw(0);
+  if(!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)) raf=requestAnimationFrame(frame);
+}});
+
+S({g:'\u0393',word:'flux',name:'\u0393\u209B(x)',
+gloss:'The total arriving at a point: every direction summed, each weighted by its own cosine.',
+fig:'<svg viewBox="0 0 560 360" id="f7"></svg>',
+cap:'Sweeping the direction accumulates the integral. The curve is the integrand L\u03BC; the bar is the running total.',
+ctl:'<div class="ctl"><label for="c7">sweep \u03C8</label><input type="range" id="c7" min="-90" max="90" step="1" value="90"><output id="c7o">90\u00B0</output></div>',
+plain:'<p>L tells you about one direction. \u0393 is the whole sky added up. It is the number an engineer actually cares about, because it is what the chemistry converts into an etch rate.</p><p>Two things happen in the sum. Each direction is weighted by its cosine, so near-grazing directions barely count. And each direction contributes only what it can see \u2014 sky if the ray escapes, re-emitted flux from a wall if it does not.</p><p>Sweep the slider and watch the bar fill. On a flat unshadowed surface it fills smoothly to the full value. Inside a trench, most of the sweep adds almost nothing.</p>',
+formal:'<div class="eq">\u0393\u209B(x) = \u222B_{H(x)} L\u209B(x \u2190 \u03C9) \u03BC d\u03C9   [m\u207B\u00B2 s\u207B\u00B9]</div><p>Units check: [m\u207B\u00B2 sr\u207B\u00B9 s\u207B\u00B9] \u00D7 [sr] = [m\u207B\u00B2 s\u207B\u00B9].</p><p>For an isotropic source, L \u2261 L\u2080 is constant and</p><div class="eq">\u0393 = L\u2080 \u222B_H \u03BC d\u03C9 = \u03C0 L\u2080</div><p>which for a Maxwellian gas of density n and mean speed v\u0304, with L = n v\u0304/4\u03C0, recovers the standard effusion flux n v\u0304/4.</p><p>Magnitudes: a neutral flux of 10\u00B2\u00B9 m\u207B\u00B2 s\u207B\u00B9 from an isotropic source corresponds to L \u2248 3.2\u00D710\u00B2\u2070 m\u207B\u00B2 sr\u207B\u00B9 s\u207B\u00B9. An ion flux of 10\u00B2\u2070 m\u207B\u00B2 s\u207B\u00B9 confined to a cone of solid angle \u2248 4\u00D710\u207B\u2074 sr has radiance \u2248 2.5\u00D710\u00B2\u00B3 \u2014 three orders higher, packed into a tiny solid angle. That concentration, not the total, is what produces anisotropy.</p><p>\u0393 is the object M3 delivers across the interface. Formally M3 implements \u0393 : (S, \u03B8) \u21A6 {\u0393\u209B(x)}\u209B for all x \u2208 S \u2014 one scalar field per species, defined on a surface that is itself an input.</p>',
+init:function(){
+  var P={x:WL,y:190,na:0};
+  function up(){
+    var top=+document.getElementById('c7').value,r=Math.PI/180,N=54,i,acc=0,tot=0;
+    document.getElementById('c7o').textContent=top+'\u00B0';
+    var sx=P.x+0.6,sy=P.y;
+    var g=defsArrow()+trench();
+    g+=fanWedges(P.x,P.y,P.na,78,function(pm){
+      var a=P.na+pm*r,h=cast(sx,sy,Math.cos(a),Math.sin(a));
+      var val=(h?0.18:1)*Math.cos(pm*r); tot+=val; if(pm<=top)acc+=val;
+      if(pm>top)return['#1B2A33',0.04];
+      return h?['#1B2A33',0.12]:['#E8A33D',0.45];
+    });
+    var pts='';
+    for(i=0;i<=60;i++){
+      var pm=-90+180*i/60,a=P.na+pm*r;
+      var h=cast(sx,sy,Math.cos(a),Math.sin(a));
+      var rad=20+86*(h?0.18:1)*Math.cos(pm*r);
+      pts+=(i?' L':'M')+(P.x+rad*Math.cos(a)).toFixed(1)+' '+(P.y+rad*Math.sin(a)).toFixed(1);
+    }
+    g+='<path d="'+pts+'" fill="none" stroke="#1D7A63" stroke-width="1.8"/>';
+    g+=tag(P.x+126,P.y-84,'integrand L\u03BC','#1D7A63',11.5);
+    var frac=tot>0?acc/tot:0;
+    g+='<rect x="420" y="250" width="110" height="16" fill="none" stroke="#D9DEDC"/>';
+    g+='<rect x="420" y="250" width="'+(110*frac).toFixed(1)+'" height="16" fill="#E8A33D"/>';
+    g+=tag(475,282,'\u0393 accumulated: '+Math.round(100*frac)+'%','#55656E',11.5);
+    g+='<circle cx="'+P.x+'" cy="'+P.y+'" r="5" fill="#1B2A33"/>'+lbl(P.x-16,P.y+22,'x','#1B2A33',16);
+    document.getElementById('f7').innerHTML=g;
+  }
+  document.getElementById('c7').oninput=up; up();
+}});
+
+S({g:'r',word:'ray cast',name:'r(x, \u03C9)',
+gloss:'Fire a ray from x along \u03C9. Return the first thing it hits, or nothing if it escapes.',
+fig:'<svg viewBox="0 0 560 360" id="f8"></svg>',
+cap:'The ray travels along \u03C9 \u2014 outward, away from x \u2014 because that is the direction the source lies in.',
+ctl:'<div class="ctl"><label for="c8">\u03C8 from the normal</label><input type="range" id="c8" min="-86" max="86" step="1" value="20"><output id="c8o">20\u00B0</output></div>',
+plain:'<p>This is the single most expensive operation in the mission, and it runs about thirteen million times per velocity evaluation.</p><p>Because \u03C6 is a distance function, the trick is cheap: standing anywhere, you know you can step forward by |\u03C6| without any risk of passing through the surface, since nothing is closer than that. Step, re-read \u03C6, step again. The steps shrink as you approach and the iteration converges on the intersection. No mesh, no bounding-volume hierarchy, and every operation differentiable.</p><p>It degrades at grazing incidence. A ray nearly tangent to a wall creeps: \u03C6 stays small while the remaining distance stays large.</p>',
+formal:'<div class="eq">t\u2080 = 0,  t\u2096\u208A\u2081 = t\u2096 + |\u03C6(x\u2080 + t\u2096\u03C9)|</div><p>\u03C6 is sampled by trilinear interpolation, never nearest-neighbour. The iteration count is <em>fixed</em> from config: a convergence-based loop makes the computational graph depend on \u03B8 and corrupts the gradient, the same rule and the same reasoning as M2\u2019s fixed timestep count.</p><p><strong>Hit-point derivative.</strong> The intersection satisfies \u03C6(x\u2080 + t\u03C9; \u03B8) = 0. Differentiating,</p><div class="eq">\u2202t/\u2202\u03B8 = \u2212(\u2202\u03C6/\u2202\u03B8) / (\u2207\u03C6\u00B7\u03C9)</div><p>exact, and free given quantities already computed. The denominator vanishes at tangency \u2014 which is the silhouette. Do not regularise it: adding \u03B5 trades a correct singular term for a smooth wrong one.</p><p><strong>Convergence budget.</strong> With incidence cosine c, a planar approach gives \u03C6\u2096\u208A\u2081 = (1\u2212c)\u03C6\u2096, so K \u2248 ln(\u03C6\u2080/\u03B5)/c. For a diffuse arriving field P(c &lt; c\u2080) = c\u2080\u00B2, so at K = 64 and \u03C6\u2080/\u03B5 = 10\u00B3 roughly 1.2% of rays fail to converge \u2014 above V25\u2019s 1% gate before corner creep is even counted.</p>',
+flag:'<b>Four gaps in the spec</b>Stepping by |\u03C6| is safe only if \u03C6 is 1-Lipschitz, which V11\u2019s 5% tolerance does not guarantee. An unsigned step pushes an overshoot deeper into the solid, where a signed step would recover. Ray origins are cell centres with |\u03C6| up to dx, so they need projection and offset \u2014 itself part of the differentiated map. And unrolled AD through the iteration is not the implicit-function derivative; it converges to it at rate (1\u2212c), giving K\u00B7\u2202\u03B8\u03C6 as c \u2192 0.',
+init:function(){
+  var P={x:WL,y:190,na:0},names=['right sidewall','left sidewall','trench floor','mask top','mask top'];
+  function up(){
+    var psi=+document.getElementById('c8').value,r=Math.PI/180;
+    document.getElementById('c8o').textContent=psi+'\u00B0';
+    var a=P.na+psi*r,wx=Math.cos(a),wy=Math.sin(a);
+    var sx=P.x+0.6,sy=P.y,h=cast(sx,sy,wx,wy),L=h?h.t:170;
+    var g=defsArrow()+trench();
+    g+='<line x1="'+sx+'" y1="'+sy+'" x2="'+(sx+wx*L)+'" y2="'+(sy+wy*L)+'" stroke="#1D7A63" stroke-width="2.2" stroke-dasharray="6 4"/>';
+    var k,tt=0;
+    for(k=0;k<7;k++){
+      var rem=L-tt, step=rem*0.55;
+      var mx=sx+wx*tt,my=sy+wy*tt;
+      g+='<circle cx="'+mx.toFixed(1)+'" cy="'+my.toFixed(1)+'" r="'+Math.max(2.5,step).toFixed(1)+'" fill="none" stroke="#1D7A63" stroke-width="0.9" opacity="0.45"/>';
+      tt+=step;
+    }
+    if(h){
+      g+='<circle cx="'+(sx+wx*L).toFixed(1)+'" cy="'+(sy+wy*L).toFixed(1)+'" r="5.5" fill="#1D7A63"/>';
+      g+=lbl(sx+wx*L+(h.seg===0?-18:0),sy+wy*L+(h.seg===2?-14:20),'y','#1D7A63',17);
+    }
+    g+=arrow(P.x,P.y,P.x+wx*96,P.y+wy*96,'#1D7A63',2.4);
+    g+='<circle cx="'+P.x+'" cy="'+P.y+'" r="5" fill="#1B2A33"/>'+lbl(P.x-16,P.y+22,'x','#1B2A33',16);
+    g+=tag(W/2,342,h?('r(x, \u03C9) = a point on the '+names[h.seg]):'r(x, \u03C9) = \u2205  \u2014  the ray escapes to the plasma','#55656E',12.5);
+    document.getElementById('f8').innerHTML=g;
+  }
+  document.getElementById('c8').oninput=up; up();
+}});
+
+S({g:'V',word:'visibility',name:'V(x, \u03C9)',
+gloss:'One if the ray escapes to the plasma, zero if it hits a wall. The quantity that jumps.',
+fig:'<svg viewBox="0 0 560 360" id="f9"></svg>',
+cap:'The dashed line marks the silhouette: the exact direction grazing the mask corner, where V flips.',
+ctl:'<div class="ctl"><label for="c9">\u03C8 from the normal</label><input type="range" id="c9" min="-86" max="86" step="1" value="-58"><output id="c9o">\u221258\u00B0</output></div>',
+plain:'<p>V is r(x, \u03C9) reduced to a yes-or-no. Did the ray get out, or did it hit something?</p><p>Sweep the slider on the sidewall and you will find one angle where the answer flips. That angle is the direction that just grazes the mask corner. It is called the silhouette, and the entire technical difficulty of M3 is contained in it.</p><p>Here is why. Change the mask width slightly and the flip angle moves. The flux therefore changes. But standard automatic differentiation sees nothing: for any <em>fixed</em> sampled direction, V is locally constant in the parameter, so its derivative is zero. The gradient it returns is missing precisely the contribution that mattered, and it reports this with complete confidence and no variance at all.</p>',
+formal:'<div class="eq">V(x, \u03C9) = 1 if r(x, \u03C9) = \u2205, else 0</div><p>V is discontinuous in both \u03C9 and \u03B8. Its discontinuity set within H(x) is the silhouette \u2202, the directions at which the ray is tangent to S \u2014 the same locus where \u2207\u03C6\u00B7\u03C9 = 0 and \u2202t/\u2202\u03B8 is singular. The implicit-function singularity and the visibility jump are one phenomenon.</p><p><strong>The bias, in one line.</strong> Let I(\u03B8) = \u222B\u2080\u00B9 \u210B(x \u2212 \u03B8) dx = 1 \u2212 \u03B8, so dI/d\u03B8 = \u22121. Draw x ~ U(0,1) and take \u00CE = \u210B(x \u2212 \u03B8), an unbiased estimator. Differentiating pathwise, \u2202\u00CE/\u2202\u03B8 = \u2212\u03B4(x \u2212 \u03B8) = 0 for almost every x, so \u1D07[\u2202\u00CE/\u2202\u03B8] = 0 \u2260 \u22121. Nothing raises, nothing is infinite, the variance is zero.</p><p><strong>The correct derivative.</strong> By the Reynolds transport theorem, with \u2202 the silhouette, \u0394g the jump and v\u2099 the silhouette\u2019s normal velocity,</p><div class="eq">d\u0393/d\u03B8 = \u222B_H V \u2202g/\u2202\u03B8 d\u03C9 + \u222E_\u2202 \u0394g\u00B7v\u2099 d\u2113</div><p>AD computes the first term. Warped-area sampling recovers the second by converting it to an interior integral with the divergence theorem, using a field \ud835\udcb1 that matches v\u2099 on \u2202 and is free elsewhere.</p>',
+flag:'<b>A correction to the derivation</b>The lesson plan\u2019s (5.11) places V outside the divergence term. With g continuous across \u2202 the two sides then cancel and the boundary term is lost. The jump lives in V, so V must sit inside: d\u0393/d\u03B8 = \u222B_H V [\u2202g/\u2202\u03B8 + \u2207\u00B7(g\ud835\udcb1)] d\u03C9, with the extra condition that g\ud835\udcb1 has no flux through \u2202H. In transport that holds automatically because \u03BC = 0 on the horizon; in the 1D exercise it does not, which is why the exercise as posed fails.',
+init:function(){
+  var P={x:WL,y:190,na:0};
+  function up(){
+    var psi=+document.getElementById('c9').value,r=Math.PI/180;
+    document.getElementById('c9o').textContent=(psi<0?'\u2212':'')+Math.abs(psi)+'\u00B0';
+    var sx=P.x+0.6,sy=P.y,lo=-90,hi=90,i;
+    for(i=0;i<40;i++){var m=(lo+hi)/2,a=P.na+m*r;if(cast(sx,sy,Math.cos(a),Math.sin(a)))hi=m;else lo=m;}
+    var star=(lo+hi)/2;
+    var a=P.na+psi*r,wx=Math.cos(a),wy=Math.sin(a);
+    var h=cast(sx,sy,wx,wy),L=h?h.t:200;
+    var g=defsArrow()+trench();
+    g+=fanWedges(P.x,P.y,P.na,74,function(pm){
+      var aa=P.na+pm*r; return cast(sx,sy,Math.cos(aa),Math.sin(aa))?['#1B2A33',0.07]:['#E8A33D',0.4];
+    });
+    var sa=P.na+star*r;
+    g+='<line x1="'+P.x+'" y1="'+P.y+'" x2="'+(P.x+Math.cos(sa)*158).toFixed(1)+'" y2="'+(P.y+Math.sin(sa)*158).toFixed(1)+'" stroke="#A63D2F" stroke-width="1.6" stroke-dasharray="4 4"/>';
+    g+=tag(P.x+Math.cos(sa)*172+8,P.y+Math.sin(sa)*172-6,'silhouette \u2202','#A63D2F',11.5,'start');
+    g+='<line x1="'+sx+'" y1="'+sy+'" x2="'+(sx+wx*L)+'" y2="'+(sy+wy*L)+'" stroke="#1D7A63" stroke-width="2.2"/>';
+    g+='<circle cx="'+P.x+'" cy="'+P.y+'" r="5" fill="#1B2A33"/>'+lbl(P.x-16,P.y+22,'x','#1B2A33',16);
+    g+=tag(W/2,342,'V = '+(h?'0, occluded':'1, escapes')+'   \u2014   the silhouette \u2202 sits at \u03C8 = '+star.toFixed(1)+'\u00B0','#55656E',12.5);
+    document.getElementById('f9').innerHTML=g;
+  }
+  document.getElementById('c9').oninput=up; up();
+}});
+
+S({g:'f',word:'scattering',name:'f\u209B(y, \u03C9\u1D62 \u2192 \u03C9\u2092)',
+gloss:'What the surface does to a particle that does not stick: given it arrived from \u03C9\u1D62, the share that leaves toward \u03C9\u2092.',
+fig:'<svg viewBox="0 0 560 360" id="f10"></svg>',
+cap:'The teal lobe is the outgoing distribution. Diffuse ignores where the particle came from; specular is set by it.',
+ctl:'<div class="seg" role="group" aria-label="model"><button data-m="0" aria-pressed="true">Diffuse</button><button data-m="1" aria-pressed="false">Specular</button></div><div class="ctl"><label for="c10">\u03C9\u1D62 angle</label><input type="range" id="c10" min="-80" max="80" step="1" value="50"><output id="c10o">50\u00B0</output></div>',
+plain:'<p>&ldquo;It bounces&rdquo; is not an answer. Bounces where? Straight back, sideways, scattered everywhere? So f takes two directions: one for where the particle came from, one for where it goes. Fix the first and you get a whole pattern over the second, not a single answer.</p><p>The two extremes are both real and both needed. A thermalised neutral hitting a rough wall forgets its history \u2014 it sits on the surface, loses all memory, and leaves in a direction set only by the wall. That is the diffuse model, and switching \u03C9\u1D62 does not move the lobe at all.</p><p>An ion skimming a sidewall does the opposite: it ricochets like a billiard ball off a cushion. Switch to specular and the lobe swings with \u03C9\u1D62. That mechanism is what produces sidewall bowing and profile twisting in high-aspect-ratio features.</p><p>Both arrows point away from the wall. &ldquo;Incoming&rdquo; names which side of the interaction is meant, not which way the arrow points.</p>',
+formal:'<p>f\u209B : S \u00D7 S\u00B2 \u00D7 S\u00B2 \u2192 \u211D\u208A, units sr\u207B\u00B9, with both \u03C9\u1D62 and \u03C9\u2092 in H(y). Fixing \u03C9\u1D62, the map \u03C9\u2092 \u21A6 f is a density on H(y) with respect to \u03BC\u2092 d\u03C9\u2092; fixing \u03C9\u2092 instead yields no normalisation. The asymmetry is structural, which is what the arrow records.</p><p>In the transport equation only \u03C9\u1D62 is a dummy variable \u2014 the outgoing slot is pinned at \u2212\u03C9, the direction back toward x:</p><div class="eq">\u222B_{H(y)} f\u209B(y, \u03C9\u1D62 \u2192 \u2212\u03C9) L\u209B(y \u2190 \u03C9\u1D62) \u03BC\u1D62 d\u03C9\u1D62</div><p>That \u2212\u03C9 is forced, not chosen. Since y is the <em>first</em> intersection along \u03C9, the ray reaches y from the void side, so \u03C9\u00B7n(y) &lt; 0 and hence \u2212\u03C9 \u2208 H(y).</p><p>A true specular model f \u221D \u03B4(\u03C9\u2092 \u2212 \u211B(\u03C9\u1D62)) reintroduces a discontinuity in \u03C9\u2092 and so re-creates the bias problem inside the scattering model. It must be mollified, with a sharpness parameter and a reported sensitivity study.</p><p>Physical BRDFs satisfy Helmholtz reciprocity. Particle scattering with angle-dependent sticking need not, since \u222Bf \u03BC\u2092 d\u03C9\u2092 = 1 \u2212 s(\u03C9\u1D62) depends on \u03C9\u1D62 while the transposed constraint would depend on \u03C9\u2092.</p>',
+flag:'<b>The shipped diffuse model fails its own check</b>With f = (1\u2212s)\u03BC\u2092/\u03C0, the conservation integral gives (2/3)(1\u2212s), not (1\u2212s) \u2014 V23 would reject it. In the BRDF convention used by equations (2.2) and (2.5), the correct Lambertian form is f = (1\u2212s)/\u03C0 in 3D, and f = (1\u2212s)/2 in the 2D capstone. Porting the 3D constant into 2D is wrong by a further factor of \u03C0/2.',
+init:function(){
+  var mode=0,Y={x:WR,y:170,na:Math.PI};
+  function up(){
+    var psi=+document.getElementById('c10').value,r=Math.PI/180;
+    document.getElementById('c10o').textContent=psi+'\u00B0';
+    var ai=Y.na+psi*r,ix=Math.cos(ai),iy=Math.sin(ai);
+    var mirror=-psi,i,pts='';
+    for(i=0;i<=60;i++){
+      var po=-90+180*i/60,val;
+      if(mode===0) val=1;
+      else { var d=Math.abs(po-mirror); val=Math.pow(Math.max(0,Math.cos(Math.min(90,d)*r)),14); }
+      var rad=10+64*val*Math.cos(po*r);
+      var aa=Y.na+po*r;
+      pts+=(i?' L':'M')+(Y.x+rad*Math.cos(aa)).toFixed(1)+' '+(Y.y+rad*Math.sin(aa)).toFixed(1);
+    }
+    var g=defsArrow()+trench();
+    g+='<path d="'+pts+'" fill="#1D7A63" opacity="0.18"/><path d="'+pts+'" fill="none" stroke="#1D7A63" stroke-width="1.8"/>';
+    var ox=-iy*9, oy=ix*9;
+    g+=arrow(Y.x,Y.y,Y.x+ix*98,Y.y+iy*98,'#E8A33D',2.5);
+    g+=lbl(Y.x+ix*114,Y.y+iy*114+5,'\u03C9\u1D62','#E8A33D',18);
+    g+=arrow(Y.x+ix*134+ox,Y.y+iy*134+oy,Y.x+ix*26+ox,Y.y+iy*26+oy,'#A63D2F',1.7,1);
+    g+=tag(Y.x+ix*76+ox*3.4,Y.y+iy*76+oy*3.4,'particle','#A63D2F',11);
+    g+=arrow(Y.x,Y.y-14,Y.x+Math.cos(Y.na)*38,Y.y-14+Math.sin(Y.na)*38,'#2E6E8E',2.2);
+    g+=lbl(Y.x-52,Y.y-10,'n(y)','#2E6E8E',15);
+    var pk=mode?mirror:0, pa=Y.na+pk*r;
+    var plen=10+64*(mode?1:1)*Math.cos(pk*r)+20;
+    g+=arrow(Y.x,Y.y,Y.x+Math.cos(pa)*plen,Y.y+Math.sin(pa)*plen,'#1D7A63',2.5);
+    g+=lbl(Y.x+Math.cos(pa)*(plen+18),Y.y+Math.sin(pa)*(plen+18)+5,'\u03C9\u2092','#1D7A63',18);
+    g+='<circle cx="'+Y.x+'" cy="'+Y.y+'" r="5" fill="#1B2A33"/>'+lbl(Y.x+18,Y.y+22,'y','#1B2A33',16);
+    g+=tag(W/2,342,mode===0?'diffuse: the lobe never moves \u2014 f has no \u03C9\u1D62 dependence at all':'specular: the lobe follows the mirror direction \u211B(\u03C9\u1D62), mollified','#55656E',12.5);
+    document.getElementById('f10').innerHTML=g;
+  }
+  var bs=document.querySelectorAll('[data-m]');
+  bs.forEach(function(b){b.onclick=function(){mode=+b.dataset.m;bs.forEach(function(o){o.setAttribute('aria-pressed',o===b);});up();};});
+  document.getElementById('c10').oninput=up; up();
+}});
+
+S({g:'s',word:'sticking',name:'s\u209B(y, \u03C9\u1D62)',
+gloss:'The probability an arriving particle is absorbed rather than re-emitted.',
+fig:'<svg viewBox="0 0 560 300" id="f11"></svg>',
+cap:'Everything arriving either sticks or leaves. The two shares must sum to one \u2014 that identity is check V23.',
+ctl:'<div class="ctl"><label for="c11">s</label><input type="range" id="c11" min="2" max="98" step="1" value="35"><output id="c11o">0.35</output></div>',
+plain:'<p>One number, and it governs the most visible phenomenon in etch.</p><p>A species that sticks readily is consumed at the first wall it touches, so it never reaches the bottom of a deep feature. A species that rarely sticks bounces its way down. Sticking therefore sets penetration depth, and penetration depth is why deep features etch slower than shallow ones. That is ARDE, and it falls out of geometry and sticking alone \u2014 no chemistry invoked.</p><p>It carries y because materials differ: fluorine on bare silicon behaves nothing like fluorine on photoresist. It carries \u03C9\u1D62 because the angle of approach changes the odds \u2014 head-on drives in, grazing skims off.</p><p>There is no \u03C9\u2092 because sticking is decided on arrival. Either the particle is captured or it is not; only if it survives do you ask where it goes, and that is f\u2019s job.</p>',
+formal:'<div class="eq">\u222B_{H(y)} f\u209B(y, \u03C9\u1D62 \u2192 \u03C9\u2092) \u03BC\u2092 d\u03C9\u2092 = 1 \u2212 s\u209B(y, \u03C9\u1D62) \u2264 1</div><p>Check V23 enforces this to 10\u207B\u2076 for every supplied model. Violation gives \u03C1(\ud835\udca6) \u2265 1, the Neumann series diverges, and the symptom is unbounded flux or a run that never terminates.</p><p>The interaction decomposes as P(absorbed | y, \u03C9\u1D62) = s\u209B, and P(\u03C9\u2092 \u2208 d\u03C9 | survived) = f \u03BC\u2092 d\u03C9\u2092 / (1 \u2212 s\u209B). The second is a conditional density on the survival event, which is exactly why s carries no outgoing argument.</p><p><strong>Bounce budget.</strong> If s \u2265 s_min uniformly then the Neumann series converges geometrically at rate (1 \u2212 s_min), requiring k &gt; log \u03B5 / log(1 \u2212 s_min) bounces for relative accuracy \u03B5. For s = 0.5 and \u03B5 = 10\u207B\u00B3 that is about 10; for s = 0.05, about 135. The low-sticking species is both the expensive case and the physically interesting one, so never size the budget from the ion.</p>',
+flag:'<b>Sticking is an output, not an input</b>Under a Langmuir closure s = s\u2080(1 \u2212 \u03B8*) with \u03B8* set by the local neutral and ion fluxes \u2014 so s depends on \u0393, which depends on s everywhere visible from y. That is a nonlinear fixed point, present even with redeposition disabled. Ion-starved sidewalls saturate, s \u2192 0, and reflect neutrals downward. ScatterRequest carries no surface state and cannot express this.',
+init:function(){
+  function up(){
+    var s=+document.getElementById('c11').value/100;
+    document.getElementById('c11o').textContent=s.toFixed(2);
+    var g=defsArrow();
+    g+='<rect x="0" y="0" width="560" height="300" fill="#FDFDFB"/>';
+    g+='<rect x="60" y="200" width="440" height="60" fill="#C9CFC9"/>';
+    g+='<line x1="60" y1="200" x2="500" y2="200" stroke="#1B2A33" stroke-width="1.6"/>';
+    g+=arrow(200,60,272,192,'#E8A33D',2.6);
+    g+=tag(178,54,'arriving: 1.0','#E8A33D',12,'start');
+    var i,N=9;
+    for(i=0;i<N;i++){
+      var ang=-160+20*i,a=ang*Math.PI/180;
+      g+='<line x1="280" y1="200" x2="'+(280+Math.cos(a)*76*(1-s)).toFixed(1)+'" y2="'+(200+Math.sin(a)*76*(1-s)).toFixed(1)+'" stroke="#1D7A63" stroke-width="2" opacity="0.75"/>';
+    }
+    g+='<rect x="272" y="200" width="16" height="'+(52*s).toFixed(1)+'" fill="#A63D2F"/>';
+    g+=tag(280,272,'absorbed: s = '+s.toFixed(2),'#A63D2F',12);
+    g+=tag(430,150,'re-emitted: 1 \u2212 s = '+(1-s).toFixed(2),'#1D7A63',12);
+    g+='<rect x="60" y="40" width="'+(440*s).toFixed(1)+'" height="14" fill="#A63D2F"/>';
+    g+='<rect x="'+(60+440*s).toFixed(1)+'" y="40" width="'+(440*(1-s)).toFixed(1)+'" height="14" fill="#1D7A63"/>';
+    g+=tag(60,32,'the budget \u2014 always exactly 1','#8A959B',11,'start');
+    var k=Math.ceil(Math.log(1e-3)/Math.log(1-s));
+    g+=tag(280,290,'bounces for 0.1% accuracy: k > log \u03B5 / log(1 \u2212 s) \u2248 '+k,'#55656E',12.5);
+    document.getElementById('f11').innerHTML=g;
+  }
+  document.getElementById('c11').oninput=up; up();
+}});
+
+S({g:'L\u1D58',word:'source',name:'L\u209B\u1D58(\u03C9)',
+gloss:'What the plasma sends down: the ion energy and angular distribution at the wafer plane.',
+fig:'<svg viewBox="0 0 560 330" id="f12"></svg>',
+cap:'Outer curve is the radiance L. Inner curve is the arrival pattern L\u03BC. For neutrals the cosine shape is in the inner curve only.',
+ctl:'<div class="seg" role="group" aria-label="species"><button data-sp="0" aria-pressed="true">Neutral</button><button data-sp="1" aria-pressed="false">Ion</button></div>',
+plain:'<p>Two species, two shapes, and the difference drives the physics.</p><p>Ions are accelerated across the sheath by a field normal to the wafer, so they arrive nearly collimated \u2014 an angular spread of about one degree. That collimation is why anisotropic etching is possible at all: the beam only reaches surfaces facing up.</p><p>Neutrals are not accelerated. They arrive from every direction equally.</p><p>Now the trap. People say &ldquo;neutrals arrive with a cosine distribution&rdquo;, which is true \u2014 but it describes the <em>arrivals</em>, the inner curve here, not the beam. Switch to neutral and look: the outer curve is a flat circle. The gas is isotropic. The cosine shape in the inner curve was manufactured by \u03BC at the surface; it was never in the gas.</p>',
+formal:'<p>For an isotropic Maxwellian gas of density n and mean speed v\u0304, the directional rate density crossing a plane is L = n v\u0304 / 4\u03C0, a constant. The arrival pattern is then</p><div class="eq">d\u0393/d\u03C9 = L \u03BC \u221D cos \u03C7,  \u0393 = \u222B_H L \u03BC d\u03C9 = \u03C0L = n v\u0304/4</div><p>recovering the standard effusion result. Knudsen\u2019s cosine law is a statement about L\u03BC.</p><p>For ions, the angular spread follows from the ratio of thermal transverse velocity to the sheath acceleration:</p><div class="eq">\u27E8\u0394\u03B8\u00B2\u27E9^{1/2} \u2248 \u221A(T\u1D62 / 2eV\u209B)</div><p>which for T\u1D62 ~ 0.05 eV and V\u209B ~ 200 V gives \u03C3 \u2248 0.011 rad, about 0.64\u00B0. \u03C3 is a differentiable parameter. In energy, the RF sheath produces the characteristic bimodal distribution, since the ion transit time is comparable to the RF period and ions pile up at the two turning points.</p>',
+flag:'<b>Differentiate \u03C3 with care</b>At fixed geometry V does not depend on \u03C3, so the true derivative carries no boundary term. But sampling by inverse CDF makes the visible set move in primary sample space, and pathwise AD then misses the samples that cross the silhouette. Sample from a stop-gradiented \u03C3\u0304 and weight by L(\u03C9;\u03C3)/p(\u03C9;\u03C3\u0304). The resulting score-function term has variance 4/\u03C3\u00B2, which is bounded \u2014 and this use is not what \u00A711 forbids, since the ban is on score functions for the <em>geometric</em> gradient.',
+init:function(){
+  var sp=0;
+  function up(){
+    var cx=280,cy=250,i,outer='',inner='';
+    for(i=0;i<=72;i++){
+      var chi=-90+180*i/72,a=(chi-90)*Math.PI/180,mu=Math.cos(chi*Math.PI/180);
+      var Lv = sp===0 ? 1 : Math.exp(-chi*chi/(2*14*14));
+      var ro=18+96*Lv, ri=18+96*Lv*mu;
+      outer+=(i?' L':'M')+(cx+ro*Math.cos(a)).toFixed(1)+' '+(cy+ro*Math.sin(a)).toFixed(1);
+      inner+=(i?' L':'M')+(cx+ri*Math.cos(a)).toFixed(1)+' '+(cy+ri*Math.sin(a)).toFixed(1);
+    }
+    var g=defsArrow();
+    g+='<rect x="0" y="0" width="560" height="330" fill="#FDFDFB"/>';
+    g+='<rect x="60" y="250" width="440" height="46" fill="#C9CFC9"/>';
+    g+='<line x1="60" y1="250" x2="500" y2="250" stroke="#1B2A33" stroke-width="1.6"/>';
+    g+='<path d="'+inner+'" fill="#E8A33D" opacity="0.22"/>';
+    g+='<path d="'+outer+'" fill="none" stroke="#1B2A33" stroke-width="1.8" stroke-dasharray="5 4"/>';
+    g+='<path d="'+inner+'" fill="none" stroke="#E8A33D" stroke-width="2.2"/>';
+    g+=arrow(cx,cy,cx,cy-134,'#2E6E8E',2)+lbl(cx+15,cy-140,'n','#2E6E8E',16);
+    g+=tag(cx+140,sp===0?128:210,'L\u1D58(\u03C9)','#55656E',12);
+    g+=tag(cx+112,sp===0?176:236,'L\u1D58\u03BC','#9A7A33',12);
+    g+=tag(W/2,318,sp===0?'isotropic radiance \u2014 the cosine shape belongs to the arrivals, not the gas   \u2014   \u0393 = \u03C0L\u2080':'\u03C3 \u2248 0.64\u00B0 \u2014 a needle of radiance; anisotropy comes from this concentration, not the total','#55656E',12.5);
+    document.getElementById('f12').innerHTML=g;
+  }
+  var bs=document.querySelectorAll('[data-sp]');
+  bs.forEach(function(b){b.onclick=function(){sp=+b.dataset.sp;bs.forEach(function(o){o.setAttribute('aria-pressed',o===b);});up();};});
+  up();
+}});
+
+S({g:'\u03B8',word:'parameters',name:'\u03B8',
+gloss:'The differentiable parameter vector: recipe, closure constants, and \u2014 crucially \u2014 anything the surface depends on.',
+fig:'<svg viewBox="0 0 560 360" id="f13"></svg>',
+cap:'Move the mask opening. The geometry moves, so the silhouette sweeps, so the flux changes. That chain is what must be differentiated.',
+ctl:'<div class="ctl"><label for="c13">mask opening w</label><input type="range" id="c13" min="40" max="170" step="1" value="100"><output id="c13o">100</output></div>',
+plain:'<p>\u03B8 is everything you can turn a knob on: source parameters, sticking coefficients, scattering constants. The clause that matters is the last one \u2014 anything the surface depends on. The geometry is not a fixed backdrop. It is itself a function of the parameters, arrived at by M2 integrating a velocity that M3 and M5 produced.</p><p>Drag the opening. Watch the amber wedge at the sidewall point widen, and the readout climb. Nothing about the chemistry changed; only the mask did, and the flux at a point hundreds of nanometres away responded.</p><p>That is the nonlocality. A change to the geometry anywhere alters the flux everywhere it can be seen from. And it does so through a boundary that <em>jumps</em>, which is why a naive gradient through this picture returns a confident and wrong answer.</p>',
+formal:'<p>Every parameter differentiated against must live in the PyTree, never captured in a closure \u2014 a captured value is invisible to jax.grad and produces a silently zero gradient column. M2 \u00A77.3 requires a test that every declared parameter yields a nonzero gradient on at least one objective, precisely to catch this.</p><p>The total derivative splits:</p><div class="eq">d\u0393\u209B(x)/d\u03B8 = \u2202\u0393\u209B/\u2202\u03B8|_S + (\u2202\u0393\u209B/\u2202S)[dS/d\u03B8]</div><p>The first term covers source, sticking and scattering at fixed geometry \u2014 mostly smooth. The second carries the geometric dependence through visibility, and is what warped-area sampling exists to compute. dS/d\u03B8 arrives from M2\u2019s adjoint through the preceding timesteps.</p><p>For the configuration drawn here, with the point at depth h on the wall, the escape half-angle is \u03C7* = arctan(w/h) and the silhouette sweeps at v\u2099 = d\u03C7*/dw = h/(h\u00B2 + w\u00B2). Nonzero v\u2099 is exactly the condition under which the pathwise gradient is biased.</p>',
+flag:'<b>A contract that cannot express this</b>Visibility and hit points need \u03C6 along every ray, and scattering needs material fractions at every hit point. M2\u2019s frozen VelocityRequest carries positions, normals, material fractions, time and step index \u2014 none of it away from the request points. Capturing \u03C6 in a closure is forbidden and would silently drop the nonlocal term; putting \u03C6 in the PyTree conflates state with parameters. \u03C6 and the material field should be added to VelocityRequest before M2.3 freezes it.',
+init:function(){
+  function up(){
+    var w=+document.getElementById('c13').value;
+    document.getElementById('c13o').textContent=w;
+    var wl=280-w/2, wr=280+w/2;
+    document.getElementById('c13o').textContent=w;
+    var segs=[[wl,MASK_Y,wl,FLR],[wr,MASK_Y,wr,FLR],[wl,FLR,wr,FLR],[LX,MASK_Y,wl,MASK_Y],[wr,MASK_Y,RX,MASK_Y]];
+    var P={x:wl,y:190,na:0},sx=P.x+0.6,sy=P.y,vis=0,N=54;
+    var g=defsArrow()+trench({wl:wl,wr:wr});
+    g+=fanWedges(P.x,P.y,P.na,74,function(pm){
+      var a=pm*Math.PI/180,h=cast(sx,sy,Math.cos(a),Math.sin(a),segs);
+      if(!h)vis++; return h?['#1B2A33',0.07]:['#E8A33D',0.42];
+    });
+    var lo=-90,hi=90,i;
+    for(i=0;i<40;i++){var m=(lo+hi)/2,a=m*Math.PI/180;if(cast(sx,sy,Math.cos(a),Math.sin(a),segs))hi=m;else lo=m;}
+    var star=(lo+hi)/2,sa=star*Math.PI/180;
+    g+='<line x1="'+P.x+'" y1="'+P.y+'" x2="'+(P.x+Math.cos(sa)*190)+'" y2="'+(P.y+Math.sin(sa)*190)+'" stroke="#A63D2F" stroke-width="1.6" stroke-dasharray="4 4"/>';
+    g+='<circle cx="'+P.x+'" cy="'+P.y+'" r="5" fill="#1B2A33"/>'+lbl(P.x-16,P.y+22,'x','#1B2A33',16);
+    var h0=FLR-190;
+    g+=tag(W/2,342,'visible share '+Math.round(100*vis/N)+'%   \u2014   \u2202 at \u03C8 = '+star.toFixed(1)+'\u00B0   \u2014   v\u2099 = d\u03C8*/dw = '+(h0/(h0*h0+w*w)*180/Math.PI).toFixed(3)+' \u00B0/unit','#55656E',12.5);
+    document.getElementById('f13').innerHTML=g;
+  }
+  document.getElementById('c13').oninput=up; up();
+}});
+
+S({g:'x, y',word:'the two roles',name:'x and y',
+gloss:'x is the point being asked about. y is the point the answer depends on. The same spot plays both, one step apart.',
+fig:'<svg viewBox="0 0 560 360" id="f14"></svg>',
+cap:'Recursion order runs outward from the query point; flight order runs inward from the plasma. Same path, opposite traversal.',
+ctl:'<div class="seg" role="group" aria-label="order"><button data-o="0" aria-pressed="true">Recursion order</button><button data-o="1" aria-pressed="false">Particle flight</button></div><button class="plain-btn" id="c14btn">Pause</button>',
+plain:'<p>Watch the rings. When the dot reaches the end of a segment, both labels jump forward together: the amber ring lands where the blue one was heading, and a new amber appears further along. Neither lags. They are two slots one vertex apart, sliding along the path in step.</p><p>Nothing about the middle wall changed when it went from y to x. Only its job did. Two bounces later, today\u2019s y is tomorrow\u2019s x.</p><p>Now switch to flight order. The particle comes down from the plasma, hits the floor first, the right wall second, and reaches the left sidewall last. The point you asked about is the <em>first</em> thing the computation touches and the <em>last</em> thing the particle touches.</p><p>That single reversal is the origin of every sign convention in this notation.</p>',
+formal:'<p>The map T : (x, \u03C9) \u21A6 (y, \u03C9\u1D62) with y = r(x, \u03C9) generates a Markov chain on S \u00D7 S\u00B2, and the transport equation is its integral equation. At recursion depth k the pair is (x\u2096, x\u2096\u208A\u2081); both indices increment by one per step, so index(y) \u2212 index(x) = 1 is invariant \u2014 the formal statement that neither label lags.</p><p>Two orderings coexist and must not be conflated. Recursion order runs x\u2080 \u2192 \u2026 \u2192 x\u2099 with increasing depth; flight order runs the reverse with increasing arrival time. The estimator walks the second\u2014 backward path tracing \u2014 because the query is anchored where velocity is needed. Forward emission from the source would land near a given sidewall point only by chance, at a rate scaling as the visible solid angle.</p><p>The reversal is what forces \u03C9 = \u2212d, and with it the \u2212\u03C9 in f\u209B(y, \u03C9\u1D62 \u2192 \u2212\u03C9). Backward tracing is unbiased for the forward physical process because the throughput measure dA \u03BC d\u03C9 is symmetric in its endpoints \u2014 the same symmetry that gives radiance its invariance. Note this is <em>not</em> reciprocity of f, which is a separate property and one that particle scattering need not satisfy.</p><p>The recursion terminates at escape, where V = 1 and the source term is collected. In flight order that same vertex is the start.</p>',
+init:function(){
+  var Pv=[{x:WL,y:230,l:'left sidewall'},{x:WR,y:150,l:'right sidewall'},{x:282,y:FLR,l:'trench floor'}],SKY={x:308,y:18};
+  var REC=[[Pv[0],Pv[1]],[Pv[1],Pv[2]],[Pv[2],SKY]], FLI=[[SKY,Pv[2]],[Pv[2],Pv[1]],[Pv[1],Pv[0]]];
+  var mode=0,seg=0,t=0,run=true,last=0,pause=0,raf=null;
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){run=false;}
+  function frame(ts){
+    var dt=last?Math.min(0.05,(ts-last)/1000):0; last=ts;
+    var A=(mode?FLI:REC)[seg],L=Math.hypot(A[1].x-A[0].x,A[1].y-A[0].y);
+    if(run){ if(pause>0){pause-=dt;} else { t+=dt*120/L; if(t>=1){t=0;pause=0.7;seg=(seg+1)%3;} } }
+    render(); raf=requestAnimationFrame(frame);
+  }
+  function render(){
+    var A=(mode?FLI:REC)[seg],a=A[0],b=A[1];
+    var px=a.x+(b.x-a.x)*t,py=a.y+(b.y-a.y)*t,i;
+    var g=defsArrow()+trench();
+    var all=[[Pv[0],Pv[1]],[Pv[1],Pv[2]],[Pv[2],SKY]];
+    for(i=0;i<3;i++) g+='<line x1="'+all[i][0].x+'" y1="'+all[i][0].y+'" x2="'+all[i][1].x+'" y2="'+all[i][1].y+'" stroke="#1B2A33" stroke-width="1" opacity="0.2"/>';
+    var col=mode?'#A63D2F':'#1D7A63';
+    g+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+px.toFixed(1)+'" y2="'+py.toFixed(1)+'" stroke="'+col+'" stroke-width="2.6" stroke-linecap="round"/>';
+    g+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="6" fill="'+col+'"/>';
+    for(i=0;i<3;i++) g+='<circle cx="'+Pv[i].x+'" cy="'+Pv[i].y+'" r="4" fill="#8A959B"/>';
+    if(!mode){
+      var q=seg,h=seg<2?seg+1:-1;
+      g+='<circle cx="'+Pv[q].x+'" cy="'+Pv[q].y+'" r="9" fill="none" stroke="#2E6E8E" stroke-width="2.6"/>';
+      g+=lbl(Pv[q].x+(q===1?24:q===2?0:-22),Pv[q].y+(q===2?28:6),'x','#2E6E8E',18);
+      if(h>=0){
+        g+='<circle cx="'+Pv[h].x+'" cy="'+Pv[h].y+'" r="9" fill="none" stroke="#E8A33D" stroke-width="2.6"/>';
+        g+=lbl(Pv[h].x+(h===1?24:0),Pv[h].y+(h===2?28:6),'y','#E8A33D',18);
+      }
+      g+=tag(W/2,342,['computing L at x; the ray hits y','the old y is now x; a new y appears','the ray escapes \u2014 no y, collect L\u1D58(\u03C9)'][seg],'#55656E',12.5);
+    } else {
+      var ord=['1st hit','2nd hit','arrives at x'],pos=[Pv[2],Pv[1],Pv[0]];
+      for(i=0;i<=seg;i++) g+=tag(pos[i].x+(i===0?0:i===1?34:-30),pos[i].y+(i===0?28:5),ord[i],'#A63D2F',11.5);
+      g+=tag(W/2,342,['a particle leaves the plasma, heading for the floor','it scatters toward the right sidewall','it lands where we asked \u2014 last in flight, first in the recursion'][seg],'#55656E',12.5);
+    }
+    document.getElementById('f14').innerHTML=g;
+  }
+  var bs=document.querySelectorAll('[data-o]');
+  bs.forEach(function(b){b.onclick=function(){mode=+b.dataset.o;seg=0;t=0;pause=0;bs.forEach(function(o){o.setAttribute('aria-pressed',o===b);});render();};});
+  var pb=document.getElementById('c14btn');
+  pb.textContent=run?'Pause':'Play';
+  pb.onclick=function(){run=!run;pb.textContent=run?'Pause':'Play';};
+  render(); raf=requestAnimationFrame(frame);
+}});
+
+/* ---------- build ---------- */
+var rail=document.getElementById('rail'),stage=document.getElementById('stage'),cur=0;
+SLIDES.forEach(function(s,i){
+  var b=document.createElement('button');
+  b.innerHTML='<span class="glyph">'+s.g+'</span><span class="word">'+s.word+'</span>';
+  b.onclick=function(){show(i);};
+  rail.appendChild(b);
+  var sec=document.createElement('section');
+  sec.className='slide'; sec.id='sl'+i;
+  sec.innerHTML=
+    '<div class="symbol-head"><p class="big">'+s.name+'</p><p class="name">'+s.word+'</p><p class="gloss">'+s.gloss+'</p></div>'+
+    '<div class="figure">'+s.fig+(s.ctl?'<div class="controls">'+s.ctl+'</div>':'')+'</div>'+
+    '<p class="figcap">'+s.cap+'</p>'+
+    '<div class="prose"><h3>In plain terms</h3>'+s.plain+
+    '<h3>Formally</h3>'+s.formal+(s.flag?'<div class="flag">'+s.flag+'</div>':'')+'</div>'+
+    '<div class="pager">'+
+      '<button class="plain-btn" data-nav="-1">Previous</button>'+
+      '<button class="plain-btn" data-nav="1">Next</button>'+
+      '<span class="count">'+(i+1)+' of '+SLIDES.length+'</span>'+
+    '</div>';
+  stage.appendChild(sec);
+});
+function show(i){
+  cur=(i+SLIDES.length)%SLIDES.length;
+  SLIDES.forEach(function(s,k){
+    document.getElementById('sl'+k).classList.toggle('on',k===cur);
+    rail.children[k].setAttribute('aria-current',k===cur);
+  });
+  if(!SLIDES[cur]._done){ SLIDES[cur].init(); SLIDES[cur]._done=true; }
+  window.scrollTo({top:0,behavior:'instant'});
+}
+stage.addEventListener('click',function(e){
+  var n=e.target.closest('[data-nav]'); if(n) show(cur+ +n.dataset.nav);
+});
+document.addEventListener('keydown',function(e){
+  if(e.target.tagName==='INPUT') return;
+  if(e.key==='ArrowRight') show(cur+1);
+  if(e.key==='ArrowLeft') show(cur-1);
+});
+show(0);
+</script>
+</body>
+</html>

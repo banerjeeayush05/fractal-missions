@@ -1,0 +1,19 @@
+# Coupon geometry S03 at dev status: real dimensions, nominal rate.
+# Promote to configs/cases/ only when the rate is measured.
+name: S03
+role: dev
+grid:
+  shape: [270, 100, 100]   # (nz, ny, nx); 21.6 MB per fp64 field
+  spacing_nm: 10.0
+  periodic: [false, true, true]
+target_depth_nm: 2500.0    # CD 500 nm, pitch 1000 nm, depth 2500 nm at dx = 10 nm
+rate:
+  nm_per_s: 4.0
+  measured: false
+  source: "nominal pending coupon metrology"
+velocity:
+  model: directional
+  params: {v0_nm_per_s: 4.0, p: 2.0}
+materials:
+  - {name: film, index: 0}
+  - {name: mask, index: 1, is_mask: true}

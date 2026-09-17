@@ -1,0 +1,18 @@
+# Small 2D development case. Nominal rate: may run anything, may certify nothing.
+name: S00
+role: dev
+grid:
+  shape: [80, 64]          # (nz, nx) — vertical axis first
+  spacing_nm: 10.0
+  periodic: [false, true]  # lateral periodic, vertical Neumann
+target_depth_nm: 500.0
+rate:
+  nm_per_s: 4.0
+  measured: false
+  source: "nominal, chosen so a dev case runs in seconds — NOT metrology"
+velocity:
+  model: directional
+  params: {v0_nm_per_s: 4.0, p: 2.0}
+materials:
+  - {name: film, index: 0}
+  - {name: mask, index: 1, is_mask: true}
