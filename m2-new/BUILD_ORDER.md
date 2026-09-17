@@ -1,16 +1,17 @@
 # BUILD_ORDER.md — M2 product, staged from the capstone
 
-Written 2026-09-14. Companion to `../m2/M2_PRD.md` (the specification) and `../m2/CLAUDE.md`
-(scope, conventions, traps). This file is **not** a spec. It is a build order: what to write, in
-what order, and which verification check proves each stage is done.
+Written 2026-09-14, and the stage list still describes the intended order. Companion to `M2_PRD.md`
+(the specification, now in this folder and amended in place) and `../CLAUDE.md`. This file is **not** a
+spec. It is a build order: what to write, in what order, and which verification check proves each stage
+is done. Settled choices are in `DECISIONS.md`; open items in `OPEN_QUESTIONS.md`.
 
 The reference point throughout is the capstone, [`practice/m2/m2_capstone.py`](practice/m2/m2_capstone.py)
 — 143 lines that solve a directional etch in 2D and return a finite gradient. Each stage below says
 what the capstone already gives you and what it is missing.
 
-The existing `../m2/` tree implements stages 1–15 and passes 251 tests. It is deliberately left in
-place. **Write each stage first, then diff against it** — reading it first reproduces its answers
-without the reasoning, and the reasoning is the entire point.
+The original `m2/` tree implemented stages 1–15 and was the reference to diff against after writing
+each stage. It was deleted from the working tree on 2026-09-17 and lives in git history at commit
+`b5b320c` (`git show b5b320c:m2/...`).
 
 ---
 

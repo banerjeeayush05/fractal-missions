@@ -7,8 +7,8 @@
 **Path:** A (recipe solve) — critical path. Also required on Path B.
 **Status of this document:** authoritative. Where this PRD conflicts with a habit or a
 default, follow this PRD.
-**Amended 2026-09-11** by `../m2/decisions/2026-09-11-open-questions-response-r3.md` and
-`../m2/decisions/2026-09-11-second-round-response.md`, which are authoritative over this document where
+**Amended 2026-09-11** by the two 2026-09-11 owner decision records (now in git history at
+`b5b320c:m2/decisions/`), which are authoritative over this document where
 they differ. Amended passages cite the decision section.
 **This copy belongs to the `m2-new` rebuild.** Amended 2026-09-16 by
 `DECISIONS.md`; those
@@ -19,14 +19,17 @@ passages are marked "Amended 2026-09-16" and apply to `m2-new`. Further amended 
 
 | cited as | where it is |
 |---|---|
-| 2026-09-11 owner decisions | `../m2/decisions/` (the original tree; not copied) |
 | decisions taken in this build | `DECISIONS.md` |
 | open items (S-numbered) | `OPEN_QUESTIONS.md` |
-| lettered findings (A1–L2: "finding H2", "decision A11", "OPEN_QUESTIONS A16") | `../m2/OPEN_QUESTIONS.md` |
-| proposals (P5 etc.) | `../m2/reports/proposals.md` |
-| dense cost table | `../m2/reports/dense_cost_table.md` |
 | cross-mission impacts (X1–X19) | `../CROSS_MISSION.md` |
 | verification ledger | `verification_ledger.json` at this folder's root |
+| 2026-09-11 owner decisions | `git show b5b320c:m2/decisions/2026-09-11-open-questions-response-r3.md` and `…second-round-response.md` |
+| lettered findings (A1–L2: "finding H2", "decision A11", "OPEN_QUESTIONS A16") | `git show b5b320c:m2/OPEN_QUESTIONS.md` |
+| proposals (P5 etc.) | `git show b5b320c:m2/reports/proposals.md` |
+| dense cost table | `git show b5b320c:m2/reports/dense_cost_table.md` |
+
+The original `m2/` tree was deleted from the working tree on 2026-09-17; the records it held are still
+in git history at commit `b5b320c`, which is why those rows are `git show` commands rather than paths.
 
 **Amended 2026-09-17 (DECISIONS.md).** This build keeps no `decisions/`, `reports/` or `scripts/`
 directory. §9's report deliverables are produced differently: the ledger keeps the machine-readable
@@ -119,7 +122,7 @@ in fp32**. Dense is entirely affordable.
 also no longer a 1 µm trench on a 256 nm pitch: it is coupon case S03 (CD 500 nm, pitch 1000 nm,
 depth 2500 nm at dx = 10 nm), which is 270 × 100 × 100 in 3D — **21.6 MB per fp64 field**. The
 dense decision therefore holds with a wide margin, and at AR 5 the sparsity question does not
-arise. See `../m2/reports/dense_cost_table.md`.
+arise. See `git show b5b320c:m2/reports/dense_cost_table.md`.
 
 **Decision: dense storage, masked compute, in JAX.** Narrow-band sparsity is a
 performance optimisation for larger domains and is explicitly deferred out of M2.
@@ -233,7 +236,7 @@ Advection of φ under etch rate R:  ∂φ/∂t − R |∇φ| = 0   (decision §1
   **not** required for M2 — first-order upwind with adequate resolution is sufficient to
   verify gradients, and the extra stencil complexity is a place for bugs to hide.
 - **Amended (owner, 2026-09-13): WENO5 is scheduled immediately after M2.3.** Measurement on the
-  coupon geometry (`../m2/OPEN_QUESTIONS.md` H1) shows first-order costs ~1.4° of sidewall angle at dx = 10 nm
+  coupon geometry (finding H1, `git show b5b320c:m2/OPEN_QUESTIONS.md`) shows first-order costs ~1.4° of sidewall angle at dx = 10 nm
   — inside any metrology floor for CD (0.3 nm) and depth (0.1 nm), but ~3× V3's 0.5° requirement.
   It lands after the gradient harness exists so V14/V15/V16 verify it immediately, and deferring is
   nearly free because the adjoint is automatic: changing the forward scheme later means re-running
@@ -329,7 +332,7 @@ padded set, and adds `weights`. The RNG key is a deterministic function of
 `(run_seed, step_index, stage_index, point_index)` — never global, never stateful, never hashed
 from `time` — and draws are independent per RK stage by default. Whether `point_index` may be a
 row in the padded array, which shifts when band membership changes and would break common random
-numbers, is open: see `../m2/OPEN_QUESTIONS.md` A16 and `../CROSS_MISSION.md` X3. M3 will supply a **stochastic, expensive** velocity;
+numbers, is open: see finding A16 (`git show b5b320c:m2/OPEN_QUESTIONS.md`) and `../CROSS_MISSION.md` X3. M3 will supply a **stochastic, expensive** velocity;
 M2's design must not assume velocity is cheap or deterministic. Specifically:
 
 - Never call the velocity model more than once per RK stage.
@@ -515,7 +518,7 @@ Use two-level checkpointing: a **nested scan** with √N outer segments, each ch
 `jax.checkpoint` on the step function alone does **not** do this — it still stores the carry at
 every one of the N steps, costing as much as the naive figure (decision §7). Both the 17 GB and
 ~750 MB figures above are fp32; fp64 doubles them, and the reference case is now far smaller
-(`../m2/reports/dense_cost_table.md`). Griewank & Walther's `revolve` is the
+(`git show b5b320c:m2/reports/dense_cost_table.md`). Griewank & Walther's `revolve` is the
 reference for the optimal schedule; JAX's `remat` policy is sufficient here.
 
 **Amended (finding I4, M2.3). "√N outer segments" is wrong once k is measured, and by 7.4×.**
@@ -608,7 +611,7 @@ These have exact answers. Disagreement is unambiguous.
   of *cells* — so the convergence studies (V6, V7) cannot refine the grid until M2.2 either. **Amended (decision §1,
   confirmed 2026-09-11): a positive rate removes material, so a solid disk shrinks** and the radius
   must satisfy r(t) = r₀ − R·t. The PRD's original growth form assumed the pre-decision sign
-  convention. Configuration in `../m2/reports/proposals.md` P5. Tolerance: relative error < 1% at 200 steps. Tests advection,
+  convention. Configuration in P5 (`git show b5b320c:m2/reports/proposals.md`). Tolerance: relative error < 1% at 200 steps. Tests advection,
   reinitialisation and extension together, and is the cheapest signal that something broke.
   **Amended 2026-09-16 (finding S12.1, owner option c).** The radius is the **mean over directions**
   (72 rays), not a single axis, because the grid axis is the direction with the least error. At full
@@ -804,7 +807,7 @@ a green M2 suite for a validated process model.
 4. `gradient_verification.md` — Taylor and forward-vs-reverse plots for every
    objective, at every milestone, dated.
 5. `tests/test_w_mat_study.py` (gate tier) — §5.6 diagnostic.
-6. `m2/interface.py` — the frozen, versioned velocity contract for M3.
+6. `geocore/interface.py` — the frozen, versioned velocity contract for M3. (§9 named it `m2/interface.py`; this build's package is `geocore`.)
 7. `simplifications.md` — every simplification, with justification.
 
 ---
@@ -869,7 +872,7 @@ never be imported by the `m2` package, and a test asserts that (decision §12). 
 
 ## 12. Open questions for the human
 
-**All seven were answered on 2026-09-11** in `../m2/decisions/2026-09-11-open-questions-response-r3.md`,
+**All seven were answered on 2026-09-11** in the 2026-09-11 decision record (`git show b5b320c:m2/decisions/`),
 which is authoritative: Q1/Q2 by the coupon ladder of decision §2 (periodic single feature,
 accepted); Q3/Q4 by decision §10 (mollified transitions accepted; two materials in two phases, and
 M2.6 stays on the critical path); Q5/Q7 by decision §9 (2D first, endpoint-only output); Q6 by

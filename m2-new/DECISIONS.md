@@ -4,8 +4,9 @@ Settled design choices, newest first. An item arrives here from `OPEN_QUESTIONS.
 and is deleted from that file. Owner words are quoted verbatim before they are interpreted.
 
 Decisions supersede the PRD, and `M2_PRD.md` in this folder is amended in place by each one; amended
-passages are marked with the date. The original tree's own decision records (2026-09-11) live at
-`../m2/decisions/` and are not copied here.
+passages are marked with the date. The original `m2/` tree was deleted on 2026-09-17; its own records —
+the 2026-09-11 owner decisions, the lettered findings A1–L2, the proposals — are in git history at
+commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
