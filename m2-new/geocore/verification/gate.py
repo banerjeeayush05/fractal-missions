@@ -156,10 +156,12 @@ def gradient_run(run: GateRun, n_steps: int | None = None, capacity: int | None 
     case, grid = run.case, run.grid
     steps = n_steps or case.n_steps
     k = capacity or min(grid.n_cells, 3 * int(occupancy(run.phi0, grid, case.bands)))
-    length = segment or segment_length_for(steps, K_STEP_3D_GODUNOV)
+    # segment=None -> derive L from measured k; segment=0 -> no checkpointing at all.
+    length = segment if segment is not None else segment_length_for(steps, K_STEP_3D_GODUNOV)
     base = SolvePlan.from_case(case)
     plan = SolvePlan(grid, base.dt_s, steps, reinit_every=base.reinit_every, n_reinit=base.n_reinit,
-                     spatial_scheme=base.spatial_scheme, checkpoint_segment=length)
+                     spatial_scheme=base.spatial_scheme,
+                     checkpoint_segment=(None if length == 0 else length))
     field = BandedRateField(with_selectivity(directional, case.materials), grid, case.bands, k,
                             run.fractions)
 
@@ -173,7 +175,8 @@ def gradient_run(run: GateRun, n_steps: int | None = None, capacity: int | None 
     float(gradient(run.params)["p"])                  # compile
     start = time.perf_counter(); float(gradient(run.params)["p"]); adjoint = time.perf_counter() - start
 
-    return {"steps": steps, "segment": length, "capacity": k, "forward_s": forward,
+    return {"steps": steps, "segment": length, "capacity": k,
+            "forward_s": forward,
             "adjoint_s": adjoint, "adjoint_ratio": adjoint / forward,
             "peak_gb_measured": device_peak_gb()}
 
@@ -244,6 +247,36 @@ def profile_components(run: GateRun) -> list[dict]:
     return rows
 
 
+def ratio_scan(run: GateRun, lengths=(5, 25, 50, 100, 200), capacity: int | None = None) -> list[dict]:
+    """Adjoint ratio against run length, checkpointed and (where it fits) unchecked.
+
+    The component profile says every piece of a step costs 1-2x in reverse, which predicts about 17 s
+    of backward for 625 steps. The measured backward is 78 s. Whatever accounts for the difference
+    exists only in the FULL run, so this varies the one thing that changes: N.
+
+    * ratio flat in N -> a fixed per-step cost the component profile does not see (scan structure or
+      checkpoint boundaries).
+    * ratio growing with N -> memory traffic, as the stored states accumulate.
+
+    The unchecked row runs only where `N * k` fields still fit: at k = 344 and 23.2 MB per field, that
+    is about 5 steps.
+    """
+    rows = []
+    for n in lengths:
+        checked = gradient_run(run, n_steps=n, capacity=capacity, segment=1)
+        row = {"n_steps": n, "forward_s": checked["forward_s"], "adjoint_s": checked["adjoint_s"],
+               "ratio": checked["adjoint_ratio"], "peak_gb": checked["peak_gb_measured"],
+               "unchecked_ratio": None}
+        if n * K_STEP_3D_GODUNOV * (math.prod(run.grid.shape) * 8 / 1e9) < 0.6 * MEMORY_BUDGET_GB:
+            try:
+                plain = gradient_run(run, n_steps=n, capacity=capacity, segment=0)
+                row["unchecked_ratio"] = plain["adjoint_ratio"]
+            except Exception as exc:                      # out of memory is an answer, not a crash
+                row["unchecked_ratio"] = f"failed: {type(exc).__name__}"
+        rows.append(row)
+    return rows
+
+
 def memory_model(grid: Grid, n_steps: int, k_step: float = K_STEP_3D_GODUNOV,
                  k_reinit: float = K_REINIT_3D_GODUNOV) -> dict:
     """Peak memory for the checkpoint schedule derived from measured k (finding I4)."""
@@ -275,6 +308,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--v14", action="store_true", help="also run full-resolution 3D V14")
     parser.add_argument("--profile", action="store_true",
                         help="time forward vs reverse for each part of a step")
+    parser.add_argument("--ratio-scan", action="store_true",
+                        help="adjoint ratio against run length, to separate per-step cost from "
+                             "memory traffic")
     parser.add_argument("--steps", type=int, default=None, help="truncate the run (smoke test)")
     parser.add_argument("--segments", type=str, default=None,
                         help="comma-separated checkpoint segment lengths to compare, e.g. 1,2,4")
@@ -338,6 +374,18 @@ def main(argv: list[str] | None = None) -> int:
         for row in profile_components(run):
             print(f"  {row['name']:42s} {row['forward_ms']:8.1f} ms {row['backward_ms']:8.1f} ms "
                   f"{row['ratio']:7.1f}x")
+
+    if args.ratio_scan:
+        print()
+        print("ADJOINT RATIO vs RUN LENGTH (checkpointed L = 1; unchecked where it fits)")
+        print(f"  {'N':>5s} {'forward':>10s} {'gradient':>11s} {'ratio':>8s} {'peak':>10s}"
+              f"  {'unchecked ratio':>16s}")
+        for row in ratio_scan(run, capacity=sizing["capacity"]):
+            peak = f"{row['peak_gb']:.1f} GB" if row["peak_gb"] is not None else "n/a"
+            plain = row["unchecked_ratio"]
+            plain = f"{plain:.2f}x" if isinstance(plain, float) else (plain or "too big")
+            print(f"  {row['n_steps']:5d} {row['forward_s']:8.2f} s {row['adjoint_s']:9.2f} s "
+                  f"{row['ratio']:7.2f}x {peak:>10s}  {plain:>16s}")
 
     if args.v14:
         from geocore.functionals import solid_volume
