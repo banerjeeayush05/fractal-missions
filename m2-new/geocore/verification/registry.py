@@ -74,7 +74,12 @@ CHECKS: Final[dict[str, Check]] = dict([
        Cadence.FAST, "§8.1", "error < 0.1%"),
     _c("V3", "Collimated aperture limit: a perfectly collimated etch (p = 64) reproduces the "
              "aperture shape, no bow, no faceting",
-       Cadence.GATE, "§8.1", "sidewall angle within 0.5 deg of 90"),
+       Cadence.GATE, "§8.1", "sidewall angle within 0.5 deg of 90", status=Status.ON_HOLD,
+       note="ON HOLD (owner, 2026-09-17, finding S18.1). At p = 64 the law punishes tilt so hard "
+            "that a mask corner's rounding spreads inward and the floor stalls: angle error 3.7 deg "
+            "against 0.5 deg. The vertical descent speed is v0*cos^(p-1)(theta), so the law's true "
+            "collimated limit is p = 1 -- which §11 forbids, because max(0,c)^p has a kink at c = 0 "
+            "there. Same family as V4. Revisit when M3 supplies non-local flux."),
     _c("V4", "Facet angle", Cadence.GATE, "§8.1", "n/a", status=Status.ON_HOLD,
        note="ON HOLD (decision §11). A monotone cos^p law peaks at normal incidence; classical "
             "facet-angle results assume a rate peaking off-normal, which needs M5 yield curves. "

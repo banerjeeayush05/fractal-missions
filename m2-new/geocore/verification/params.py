@@ -21,12 +21,16 @@ V0_SCALE_NM_PER_S: Final[float] = 1.0
 P_SCALE: Final[float] = 1.0
 
 
+# Dimensionless material rate multipliers (stage 17). A selectivity is order 1; 1 is meaningful.
+MATERIAL_RATE_SCALE: Final[float] = 1.0
+
+
 def scales_for(params: dict) -> dict:
     """A scales PyTree with the same structure as `params`. Unknown keys raise, so a new
     parameter cannot enter V14 without someone deciding its scale."""
-    known = {"v0_nm_per_s": V0_SCALE_NM_PER_S, "p": P_SCALE}
+    known = {"v0_nm_per_s": V0_SCALE_NM_PER_S, "p": P_SCALE, "material_rate": MATERIAL_RATE_SCALE}
     missing = sorted(set(params) - set(known))
     if missing:
         raise KeyError(f"no perturbation scale declared for {missing}; add one in params.py "
                        f"with the reason it is physically meaningful")
-    return {k: jnp.asarray(known[k], dtype=jnp.float64) for k in params}
+    return {k: jnp.full(jnp.shape(params[k]), known[k], dtype=jnp.float64) for k in params}

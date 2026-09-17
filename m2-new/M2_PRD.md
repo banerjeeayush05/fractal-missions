@@ -7,28 +7,33 @@
 **Path:** A (recipe solve) — critical path. Also required on Path B.
 **Status of this document:** authoritative. Where this PRD conflicts with a habit or a
 default, follow this PRD.
-**Amended 2026-09-11** by `decisions/2026-09-11-open-questions-response-r3.md` and
-`decisions/2026-09-11-second-round-response.md`, which are authoritative over this document where
+**Amended 2026-09-11** by `../m2/decisions/2026-09-11-open-questions-response-r3.md` and
+`../m2/decisions/2026-09-11-second-round-response.md`, which are authoritative over this document where
 they differ. Amended passages cite the decision section.
 **This copy belongs to the `m2-new` rebuild.** Amended 2026-09-16 by
-`decisions/2026-09-16-s12-1-and-s13-1.md` and `decisions/2026-09-16-drift-check-and-prd.md`; those
-passages are marked "Amended 2026-09-16" and apply to `m2-new`.
+`DECISIONS.md`; those
+passages are marked "Amended 2026-09-16" and apply to `m2-new`. Further amended 2026-09-17 by
+`DECISIONS.md`.
 
 **Where cited records live in `m2-new`** (paths are relative to this file):
 
-| cited as | file |
+| cited as | where it is |
 |---|---|
-| 2026-09-11 owner decisions | `decisions/2026-09-11-open-questions-response-r3.md`, `decisions/2026-09-11-second-round-response.md` (copied from the original tree) |
-| 2026-09-16 owner decisions | `decisions/2026-09-16-s12-1-and-s13-1.md`, `decisions/2026-09-16-drift-check-and-prd.md` |
-| lettered findings (A1–L2: "finding H2", "decision A11", "OPEN_QUESTIONS A16") | `reports/m2-original-open-questions.md` (copied from the original tree) |
-| S-numbered findings (S1.1 onward) | `OPEN_QUESTIONS.md` |
-| proposals (P5 etc.) | `reports/proposals.md` (copied from the original tree) |
-| dense cost table | `reports/dense_cost_table.md` (copied from the original tree) |
-| cross-mission impacts (X1–X19) | `../CROSS_MISSION.md` (shared at repo root) |
+| 2026-09-11 owner decisions | `../m2/decisions/` (the original tree; not copied) |
+| decisions taken in this build | `DECISIONS.md` |
+| open items (S-numbered) | `OPEN_QUESTIONS.md` |
+| lettered findings (A1–L2: "finding H2", "decision A11", "OPEN_QUESTIONS A16") | `../m2/OPEN_QUESTIONS.md` |
+| proposals (P5 etc.) | `../m2/reports/proposals.md` |
+| dense cost table | `../m2/reports/dense_cost_table.md` |
+| cross-mission impacts (X1–X19) | `../CROSS_MISSION.md` |
+| verification ledger | `verification_ledger.json` at this folder's root |
 
-Deliverables named in §9 (`reports/verification.md`, `reports/gradient_verification.md`,
-`reports/w_mat_sensitivity.md`, `reports/simplifications.md`) are outputs this build must produce;
-they are not copied from the original tree.
+**Amended 2026-09-17 (DECISIONS.md).** This build keeps no `decisions/`, `reports/` or `scripts/`
+directory. §9's report deliverables are produced differently: the ledger keeps the machine-readable
+record, findings that need a human live in `OPEN_QUESTIONS.md` and `DECISIONS.md`, and diagnostics that
+would have written a report file are gate-tier tests (`tests/test_gate_m2_4.py`,
+`tests/test_w_mat_study.py`). `verification.md` — the generated, customer-facing record — is
+still owed, at stage 18.
 
 ---
 
@@ -114,7 +119,7 @@ in fp32**. Dense is entirely affordable.
 also no longer a 1 µm trench on a 256 nm pitch: it is coupon case S03 (CD 500 nm, pitch 1000 nm,
 depth 2500 nm at dx = 10 nm), which is 270 × 100 × 100 in 3D — **21.6 MB per fp64 field**. The
 dense decision therefore holds with a wide margin, and at AR 5 the sparsity question does not
-arise. See `reports/dense_cost_table.md`.
+arise. See `../m2/reports/dense_cost_table.md`.
 
 **Decision: dense storage, masked compute, in JAX.** Narrow-band sparsity is a
 performance optimisation for larger domains and is explicitly deferred out of M2.
@@ -228,7 +233,7 @@ Advection of φ under etch rate R:  ∂φ/∂t − R |∇φ| = 0   (decision §1
   **not** required for M2 — first-order upwind with adequate resolution is sufficient to
   verify gradients, and the extra stencil complexity is a place for bugs to hide.
 - **Amended (owner, 2026-09-13): WENO5 is scheduled immediately after M2.3.** Measurement on the
-  coupon geometry (`reports/m2-original-open-questions.md` H1) shows first-order costs ~1.4° of sidewall angle at dx = 10 nm
+  coupon geometry (`../m2/OPEN_QUESTIONS.md` H1) shows first-order costs ~1.4° of sidewall angle at dx = 10 nm
   — inside any metrology floor for CD (0.3 nm) and depth (0.1 nm), but ~3× V3's 0.5° requirement.
   It lands after the gradient harness exists so V14/V15/V16 verify it immediately, and deferring is
   nearly free because the adjoint is automatic: changing the forward scheme later means re-running
@@ -324,7 +329,7 @@ padded set, and adds `weights`. The RNG key is a deterministic function of
 `(run_seed, step_index, stage_index, point_index)` — never global, never stateful, never hashed
 from `time` — and draws are independent per RK stage by default. Whether `point_index` may be a
 row in the padded array, which shifts when band membership changes and would break common random
-numbers, is open: see `reports/m2-original-open-questions.md` A16 and `../CROSS_MISSION.md` X3. M3 will supply a **stochastic, expensive** velocity;
+numbers, is open: see `../m2/OPEN_QUESTIONS.md` A16 and `../CROSS_MISSION.md` X3. M3 will supply a **stochastic, expensive** velocity;
 M2's design must not assume velocity is cheap or deterministic. Specifically:
 
 - Never call the velocity model more than once per RK stage.
@@ -375,6 +380,11 @@ and must be reported, not tuned away. See open question **Q3**.
 
 Outputs an engineer cares about: `depth`, `CD` at three heights, `sidewall_angle`,
 `mask_remaining`, `bow`.
+
+**Amended 2026-09-17 (finding S16.1, owner accepted).** `bow = CD(z_mid) − (CD(z_low) + CD(z_high)) / 2`
+over a fixed absolute depth window: zero for a straight taper, positive when the trench is wider in the
+middle. The "maximum CD in the window" definition is not used because its `max` is a kink in the
+differentiated path (§11).
 
 **`mask_remaining` gains a physical reference case (owner, 2026-09-13):** the coupon metrology can
 report mask loss. With the mask modelled at infinite selectivity the model predicts **zero** loss,
@@ -505,7 +515,7 @@ Use two-level checkpointing: a **nested scan** with √N outer segments, each ch
 `jax.checkpoint` on the step function alone does **not** do this — it still stores the carry at
 every one of the N steps, costing as much as the naive figure (decision §7). Both the 17 GB and
 ~750 MB figures above are fp32; fp64 doubles them, and the reference case is now far smaller
-(`reports/dense_cost_table.md`). Griewank & Walther's `revolve` is the
+(`../m2/reports/dense_cost_table.md`). Griewank & Walther's `revolve` is the
 reference for the optimal schedule; JAX's `remat` policy is sufficient here.
 
 **Amended (finding I4, M2.3). "√N outer segments" is wrong once k is measured, and by 7.4×.**
@@ -571,8 +581,8 @@ result that arrives after the code it validates is archaeology, not verification
 
 Twenty-two checks, each with an ID (plus lettered sub-checks V1a, V12a and V14a–c; **V12a added
 2026-09-16**). Milestone gates in §6 cite them by ID. Every check
-writes a row to `reports/verification_ledger.json`: id, description, cadence, last run,
-git SHA, pass/fail, and the measured quantity. `reports/verification.md` is **generated**
+writes a row to `verification_ledger.json`: id, description, cadence, last run,
+git SHA, pass/fail, and the measured quantity. `verification.md` is **generated**
 from that ledger, never hand-written — a hand-maintained verification record drifts from
 reality within a month.
 
@@ -598,7 +608,7 @@ These have exact answers. Disagreement is unambiguous.
   of *cells* — so the convergence studies (V6, V7) cannot refine the grid until M2.2 either. **Amended (decision §1,
   confirmed 2026-09-11): a positive rate removes material, so a solid disk shrinks** and the radius
   must satisfy r(t) = r₀ − R·t. The PRD's original growth form assumed the pre-decision sign
-  convention. Configuration in `reports/proposals.md` P5. Tolerance: relative error < 1% at 200 steps. Tests advection,
+  convention. Configuration in `../m2/reports/proposals.md` P5. Tolerance: relative error < 1% at 200 steps. Tests advection,
   reinitialisation and extension together, and is the cheapest signal that something broke.
   **Amended 2026-09-16 (finding S12.1, owner option c).** The radius is the **mean over directions**
   (72 rays), not a single axis, because the grid axis is the direction with the least error. At full
@@ -608,10 +618,20 @@ These have exact answers. Disagreement is unambiguous.
 - **V2 — Plane translation.** Flat interface under constant V translates at exactly V with
   no distortion. Error < 0.1% — this one should be nearly exact, and if it is not the
   upwind scheme or the boundary condition is wrong.
-- **V3 — Collimated aperture limit.** Perfectly collimated directional etch must reproduce the
-  aperture shape: vertical sidewalls, no bow, no faceting. Sidewall angle within 0.5° of 90°. This
-  is the sanity limit an etch engineer will check first. **p = 64** (finite, stated in the config;
+- **V3 — Collimated aperture limit. ON HOLD (owner, 2026-09-17; finding S18.1).** Perfectly
+  collimated directional etch must reproduce the aperture shape: vertical sidewalls, no bow, no
+  faceting. Sidewall angle within 0.5° of 90°. **p = 64** (finite, stated in the config;
   decision §11), since p → ∞ is not representable.
+  **Why it is on hold.** For a surface z = h(x) the level set gives the vertical descent speed as
+  `h_t = −v₀·cos^(p−1)(θ)`. At p = 1 every part of the surface descends at v₀ whatever its tilt — the
+  aperture translates downward, which is what "perfectly collimated" means. For p > 1 a tilted patch
+  descends more slowly, so tilt grows; the mask corner supplies the first tilt and the rounding
+  spreads inward. Measured at 100 nm of travel: angle error 0.195° at p = 1, 0.110° at p = 1.05,
+  1.177° at p = 1.25, 4.717° at p = 2, 3.051° at p = 64, with the trench never widening (CD 100.00 nm
+  throughout, since a vertical wall has n·ẑ = 0 at any p). So p is not "how collimated" the etch is;
+  it is how strongly the model punishes tilt, and the law's collimated limit p = 1 is exactly the case
+  §11 forbids for differentiability. A real collimated etch holds a flat floor because the ion flux is
+  uniform and non-local — M3's visibility calculation. Same family as V4. Revisit at M3.
 - **V4 — Facet angle. ON HOLD (decision §11).** Under a monotone cos^p law the vertical etch
   rate peaks at normal incidence, while the classical facet-angle results assume a rate peaking
   off-normal, which needs a yield curve — M5 physics. Do not spend time on V4 until someone
@@ -770,22 +790,22 @@ whether those are the right equations, because M2's velocity is prescribed and a
 - Grid anisotropy (V10) is measured but not eliminated; it will show up again as a
   sidewall-angle artifact once M3 supplies angle-dependent velocity.
 
-Record this scope boundary in `reports/verification.md` so that a reader does not mistake
+Record this scope boundary in `verification.md` so that a reader does not mistake
 a green M2 suite for a validated process model.
 
 ## 9. Deliverables
 
 1. `fractal-m2` repo, running from clean checkout with `uv sync && pytest`.
-2. `reports/verification_ledger.json` — machine-readable record of all 22 checks: id,
+2. `verification_ledger.json` — machine-readable record of all 22 checks: id,
    cadence, last run, git SHA, result, measured value. Written by the checks themselves.
-3. `reports/verification.md` — **generated** from the ledger. Includes the §8.9 scope
+3. `verification.md` — **generated** from the ledger. Includes the §8.9 scope
    boundary and every open discrepancy. This is the artifact that makes every downstream
    mission trustworthy, and the one a sceptical customer will ask for.
-4. `reports/gradient_verification.md` — Taylor and forward-vs-reverse plots for every
+4. `gradient_verification.md` — Taylor and forward-vs-reverse plots for every
    objective, at every milestone, dated.
-5. `reports/w_mat_sensitivity.md` — §5.6 diagnostic.
+5. `tests/test_w_mat_study.py` (gate tier) — §5.6 diagnostic.
 6. `m2/interface.py` — the frozen, versioned velocity contract for M3.
-7. `reports/simplifications.md` — every simplification, with justification.
+7. `simplifications.md` — every simplification, with justification.
 
 ---
 
@@ -837,7 +857,7 @@ never be imported by the `m2` package, and a test asserts that (decision §12). 
 - **Do not tune `w_mat`, CFL or `n_reinit` to make a gradient test pass.** If a test only
   passes at one setting, that is the finding.
 - **Do not vendor, link or copy ViennaPS.** GPL-3.0. §8.8.
-- **Do not hand-write `reports/verification.md`.** Generate it from the ledger.
+- **Do not hand-write `verification.md`.** Generate it from the ledger.
 - **Do not loosen a verification tolerance to make a check pass.** Raise it as a finding.
   If a tolerance is genuinely wrong, change it in a commit that says so and explains why.
 - **Do not run V22 (ViennaPS) before V6 and V7.** Without convergence orders you cannot
@@ -849,7 +869,7 @@ never be imported by the `m2` package, and a test asserts that (decision §12). 
 
 ## 12. Open questions for the human
 
-**All seven were answered on 2026-09-11** in `decisions/2026-09-11-open-questions-response-r3.md`,
+**All seven were answered on 2026-09-11** in `../m2/decisions/2026-09-11-open-questions-response-r3.md`,
 which is authoritative: Q1/Q2 by the coupon ladder of decision §2 (periodic single feature,
 accepted); Q3/Q4 by decision §10 (mollified transitions accepted; two materials in two phases, and
 M2.6 stays on the critical path); Q5/Q7 by decision §9 (2D first, endpoint-only output); Q6 by

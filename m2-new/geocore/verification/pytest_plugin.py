@@ -33,7 +33,7 @@ from geocore.verification.ledger import Ledger, LedgerRefusal
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--ledger-of-record", action="store_true", default=False,
-        help="write reports/verification_ledger.json instead of the local ledger. "
+        help="write verification_ledger.json (the ledger of record) instead of the local ledger. "
              "Refuses on a dirty tree; intended for CI on a clean checkout.",
     )
 

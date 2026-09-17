@@ -30,6 +30,9 @@ FORBIDDEN_ANYWHERE = (
 # PRD §10 / decision §12: permitted inside tests/ for M2.8, never imported by the package.
 FORBIDDEN_IN_PACKAGE = ("scipy.optimize",)
 
+# Decision A11: scikit-image is V13's independent reference ONLY, never in the differentiated path.
+FORBIDDEN_IN_PACKAGE += ("skimage",)
+
 
 def _imported_module_names(path: pathlib.Path) -> set[str]:
     """Every module name a source file imports, without executing it."""

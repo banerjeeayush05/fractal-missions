@@ -1,7 +1,7 @@
 # OPEN_QUESTIONS — M2 (m2-new build)
 
-Ambiguities, deviations and findings, with the evidence behind each. Never resolve an ambiguity by
-guessing; write it here instead, classified:
+Everything still undecided, with the evidence behind it. Never resolve an ambiguity by guessing; write
+it here instead, classified:
 
 - **A** — PRD error (arithmetic, cross-reference, or a statement shown to be false)
 - **B** — placeholder, carrying `provisional: true` and the mechanical rule that produced it
@@ -9,10 +9,11 @@ guessing; write it here instead, classified:
 - **D** — minor
 
 Separately, per `WORKING_AGREEMENT.md` §2, a change is **Class A** (adjusts a requirement) or
-**Class B** (changes or compromises the project; stop and ask). Findings are numbered by build stage.
+**Class B** (changes or compromises the project; stop and ask).
 
-Findings from stages 1–11 are recorded in the docstrings of the modules they concern
-(`pyproject.toml` S1.1, `geocore/schema.py` S3.1–S3.4, `geocore/config.py` S4.1–S4.3).
+**The pipeline:** an item lives here until it is settled, then it moves to `DECISIONS.md` and is deleted
+from this file. Findings that are simply *recorded* — a measured property of the code, needing no
+decision — live in the docstring of the module they concern, not here.
 
 ---
 
@@ -188,6 +189,8 @@ cannot land unnoticed. Tolerances are unchanged.
 
 ---
 
+---
+
 ## S12.3 — V12a's tolerance
 
 **Status:** provisional placeholder, `provisional: true`. **Classification:** B.
@@ -213,58 +216,6 @@ implied about 2.15 %; it was not chosen to pass.
 **Owner decision needed:** confirm or replace the 1 % rule.
 
 ---
-
-## PRD location
-
-`M2_PRD.md` now lives in this folder and is amended in place by `m2-new` decisions (header, §6, §8,
-§8.0, §8.1, §8.3, §8.5; each passage marked "Amended 2026-09-16"). The original tree's copy is no
-longer in the working directory. Decision record: `decisions/2026-09-16-drift-check-and-prd.md`.
-
----
-
-## Gate note — M2.3 built with the M2.2 gate open
-
-On 2026-09-16 the owner directed work to continue to stage 13 (M2.3) while S12.1 was unresolved, and
-the same day accepted S12.1 as a known discrepancy (option c). The M2.2 gate is therefore accepted
-with that exception: V1 (full travel) and V9 remain `xfail(strict=True)`. Nothing
-in M2.3 depends on how S12.1 is resolved, except V14a, which inherits it (below).
-
----
-
-## S13.1 — The PRD gives the analytic sensitivities V14a–V14c no tolerance
-
-**Status:** DECIDED — owner accepted the 1 % rule 2026-09-16. Decision record:
-`decisions/2026-09-16-s12-1-and-s13-1.md`. **Classification:** B (was).
-**Working-agreement class: A** (adjusts a requirement), announced when made.
-
-Decision §5 added V14a, V14b and V14c "with closed-form answers" and gives no tolerance. The check
-registry previously said "relative error < 1e-6". That figure was written at stage 5 with no basis
-in the PRD and is **withdrawn**.
-
-**Mechanical rule applied: 1 % relative error, for all three.** It follows from three constraints:
-
-1. The checks exist to catch what V14–V16 cannot: a wrong sign, a wrong normal convention, or a
-   derivative wrong by the size V19 injects (5 %). The tolerance must sit clearly below 5 %.
-2. A discrete derivative carries the same discretisation error as the discrete forward map, so it
-   cannot be held tighter than the forward tolerance of its own configuration. V1's is 1 %.
-3. One number for all three, so no check has a tolerance fitted to its own result.
-
-**This rule was written after the results were measured.** It is recorded as such. Under it V14b and
-V14c pass and V14a fails, so it was not chosen to make every check pass.
-
-| check | derivative | measured | expected | relative error | result |
-|---|---|---|---|---|---|
-| V14b | d(depth)/dR, plane | 19.9993 | +20 | 3.5e-5 | pass |
-| V14c | dz/dv0, 30° facet | −17.348 | −17.321 | 1.6e-3 | pass |
-| V14c | dz/dp, 30° facet | 4.972 | 4.983 | 2.1e-3 | pass |
-| V14a | dr/dR, disk, full travel | −26.19 | −25.7 | 1.9e-2 | **xfail (S12.1)** |
-
-V14a's failure is attributed to S12.1 by experiment, not assumption:
-`test_v14a_derivative_is_correct_without_cumulative_reinit_drift` runs the same derivative with the
-travel inside the band and reinitialisation off, and it passes within 1 %. The gradient machinery is
-sound; the error belongs to the forward map.
-
-**Owner decision:** accepted, 2026-09-16.
 
 ---
 
@@ -297,62 +248,122 @@ V5 and V6 pass under either convention:
 
 ---
 
-## S13.3 — Residual factor k and adjoint ratio (measured, not gated)
+---
 
-**Status:** recorded for M2.4. **Classification:** C (input to the M2.4 checkpoint schedule).
+## S14.2 — WENO5 re-measurement after the fix is incomplete
 
-Decision I5(a): M2.3 measures and reports the adjoint cost; it does not gate on it. Measured on a
-40 × 32 grid, directional law, first-order Godunov, CPU:
+**Status:** open. **Classification:** C (S12.1's revisit depends on it).
 
-| quantity | value |
+The owner declared stage 14 finished. The full re-measurement under the fixed scheme was stopped to
+free the CPU (XLA compiles of about 5 minutes each). Confirmed after the fix: V8 (area −1.49 %, notch
+17.7 %, both within tolerance) and the dx = 1 disk (no holes). Measured **before** the fix, with
+forward-Euler reinitialisation, and not re-confirmed: V1 0.034 %, V12a 0.002 %, V9 0.009 %, V10 0.009 %,
+V14a 0.36 %, V6 order about 2 (finding J2's cap). Those runs showed no instability, so the numbers are
+likely to hold, but that is not a measurement. WENO5 variants of the check tests are not yet written.
+
+S12.1 (option c) is to be revisited with these numbers. Until they are re-confirmed, it is not.
+
+---
+
+## S14.3 — WENO5 cost
+
+**Status:** recorded. **Classification:** C (owner decision J5: whether WENO5 becomes the default).
+
+| quantity (2D, 40×32, CPU) | Godunov | WENO5 |
+|---|---|---|
+| k per step | 206 | 378 |
+| k per reinitialisation cycle | 101 | 529 (before RK3; RK3 raises it further) |
+| warm adjoint ratio, unchecked | 3.46× | 7.40× |
+| V14 | 20 clean | 18 clean, 2 degenerate (slope 2.24) |
+| V16 | 3.7e-15 | 8.6e-11, against 1e-10 |
+
+V16 under WENO5 passes with little margin. Godunov remains the default.
+
+---
+
+---
+
+## S15.4 — M2.4 gate status
+
+| item | result |
 |---|---|
-| k, residuals per solver step, in φ-sized fields | 206 |
-| k, residuals per reinitialisation cycle | 101 |
-| warm adjoint / forward wall-clock ratio, unchecked, 20 steps | 3.46 |
+| V17 checkpointed = unchecked, 2D and 3D | pass — worst 2.4e-16, tolerance 1e-12 |
+| V18 replay reproduces draws bitwise; trajectory 1e-12 | pass — every stage replayed once, all copies bitwise identical |
+| 3D V14 / V15 / V16 (small grid) | pass — 20/20 clean; 2.6e-15; 1.9e-15 |
+| checkpoint count from measured k | L = 1 from k = 344 |
+| peak memory < 40 GB on one H100 | **open — needs H100** (modelled 24.0 GB) |
+| recompute overhead ≤ 2× | **open — needs H100** |
+| warm adjoint ratio ≤ 4×, checkpointed | **open — needs H100** |
+| full-resolution 3D V14 on S03 | **open — needs H100** (`scripts/gate_m2_4.py --v14`) |
 
-**Proposed M2.4 schedule** (PRD §7.4): two-level checkpointing peak is `N/L + L·k`, minimised at
-`L* = sqrt(N/k)`. For the S03 case, N = 625 and k ≈ 206 per step give `L* ≈ 1.7`, so **L = 1 or 2**:
-checkpoint every step or every other step. This agrees in direction with the original tree's finding
-K2 (L = 1 at k = 349).
-
-Caveats, stated so the numbers are not over-read:
-
-- k includes arrays sized by the request capacity K as well as by the grid, so it is not exactly
-  grid-independent. Re-measure on the S03 grid before fixing L.
-- The original tree measured k = 349 for Godunov; this build measures 206. The definitions may
-  differ (for example whether reinitialisation is folded into the per-step figure). Not investigated.
-- The adjoint ratio is a CPU laptop measurement of an unchecked run. Decision I5(a) sets the
-  product-relevant figure as a checkpointed H100 run at M2.4; this number is not that.
-
-Reproduce: `tests/test_adjoint_cost.py` keeps the k measurement executable.
+The gate script does not yet instrument peak device memory itself; the report says to sample
+`nvidia-smi` during the gradient call. Worth adding before paying for the run.
 
 ---
 
-## S13.4 — The local ledger is replaced wholesale by every run
+---
 
-**Status:** open, minor. **Classification:** D.
+## S17.1 — w_mat sensitivity: small for the marker's own rate, large for the film's
 
-`Ledger.write` replaces `reports/local/verification_ledger.json` with the rows from the current run.
-Running only the fast tier therefore removes the nightly rows (V5–V10) written by an earlier full run.
-The ledger of record is unaffected, because CI writes it from a complete run. Locally it means the
-file reflects the last run, not the last result of every check. Options: merge rows by check ID with
-the newer row winning, or accept the current behaviour and document it. No change made.
+**Status:** reported, and the resolution question DECIDED 2026-09-17 (dx = 2 nm, w_mat 2 cells). **Classification:** C — owner should read before M2.8
+calibration. Report: `reports/w_mat_sensitivity.md` (generated by `scripts/w_mat_study.py`).
+
+Masked trench, directional law, dx = 2 nm, floor crossing into a 30 nm SiGe marker (provisional).
+Change relative to the default w_mat = 2 cells:
+
+| w_mat | share of marker | depth | d/dv0 | d/d(SiGe rate) | d/d(film rate) |
+|---|---|---|---|---|---|
+| 1 cell | 6.7 % | −0.33 % | +0.53 % | +1.51 % | −4.88 % |
+| 4 cells | 26.7 % | +0.43 % | −0.16 % | −1.71 % | +8.41 % |
+| 8 cells | 53.3 % | +1.37 % | +0.18 % | −5.44 % | **+31.27 %** |
+
+V14 passes at every width. The depth and its sensitivity to the overall rate and to the marker's rate
+barely depend on w_mat. The sensitivity to the **film** rate does: wider ramps blend film into the
+marker's boundary zone, and at 8 cells (over half the marker) it moves by 31 %. At the default
+(13 % of the marker) the film-rate sensitivity differs from 1 cell by about 5 %.
+
+Plain reading: the gradient that says "how much does the film etch rate matter while crossing into the
+marker" is partly a property of the smoothing, not of the physics, and more so the wider the smoothing
+is relative to the layer. A fit that calibrates a film rate from marker-crossing data will inherit that.
+
+**Owner decision, 2026-09-17:** keep dx = 2 nm and the default w_mat of 2 cells (13 % of the marker).
+Decision record: `decisions/2026-09-17-w-mat-resolution.md`. `w_mat` is never fitted; the standing
+obligation is that any physical parameter fitted from marker-crossing data records the w_mat it was
+fitted under.
 
 ---
 
-## BUILD_ORDER correction — the smooth functional moved to stage 13
+## S17.5 — The mask thickness is provisional
 
-The M2.3 gate requires V14, V15 and V16 **on the smooth volumetric functional** (PRD §5.7, §6).
-`BUILD_ORDER.md` placed `functionals.py` at stage 16 with extraction. `solid_volume` and its
-mollified Heaviside were therefore built at stage 13; extraction (CD, sidewall angle, depth, bow,
-mask remaining) stays at stage 16.
+**Status:** placeholder, `provisional: true`. **Classification:** B.
+
+200 nm has no coupon measurement behind it. *Mechanical rule:* a conventional hard-mask-to-etch ratio
+for a 2.5 um silicon trench is order 10 %, and 200 nm is 20 cells at dx = 10 nm, so the mask is resolved
+rather than a two-cell sliver. S00 carries 100 nm on the same rule. Both are dev configs and may never
+certify a claim of agreement with the coupon (`require_measured_rate`). When metrology supplies the real
+thickness, the grid height follows from it: `ceil((2 * buffer + depth + mask) / dx)` cells.
+
+Effect of the change on the M2.4 projection: field 21.6 -> 23.2 MB, modelled peak 24.0 -> 25.8 GB
+against the 40 GB budget. Band occupancy at the worst step rose from 36,200 to 41,600 cells.
 
 ---
 
-## Related, already decided
+---
 
-**G1 — V8 (Zalesak's disk) fails under first-order Godunov.** Owner accepted as a known discrepancy
-on 2026-09-11 (recorded in `m2/OPEN_QUESTIONS.md`). This build measures 42.95 % area loss and 75 %
-notch fill at 100², against 43.0 % recorded. `tests/test_invariants.py::test_v8_zalesak_disk` is
-`xfail(strict=True)`. It is numerical diffusion from advection, distinct from S12.1, though
-reinitialisation contributes to it.
+## S18.2 — `top_k` is half the step time on CPU
+
+**Status:** recorded, optimisation candidate. **Classification:** D. Profile on a 256x256 grid:
+
+| part | time |
+|---|---|
+| full step | 14.54 ms |
+| `top_k` inside `build_request` | 7.27 ms |
+| everything else in `build_request` | ~0 |
+| `closest_points` | 0.31 ms |
+| `unit_normal` | 0.42 ms |
+| reinitialisation cycle (5 iterations) | 0.67 ms |
+
+`top_k` ranks every cell by `-|phi|`, so its cost follows the GRID, not K: capacity 3,056 and 16,384
+both give 14.5 ms per step. Band occupancy is 2.3 % of cells, so 97 % of the work is spent ranking cells
+that will not be used. Fixing it means a selection that is static-shaped without a full ranking; nothing
+is proposed yet, and it should be re-profiled on the GPU first, where `top_k` behaves differently.

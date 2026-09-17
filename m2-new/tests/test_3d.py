@@ -4,7 +4,7 @@ Nothing in `geocore` branches on dimension: stencils loop over axes, the vertica
 and the band, gather and reinitialisation are written for any ndim. These tests are what make that
 claim a measurement.
 
-Full-resolution 3D V14 on case S03 is a gate-tier check on an H100 (`scripts/gate_m2_4.py`); this is
+Full-resolution 3D V14 on case S03 is a gate-tier check on an H100 (`tests/test_gate_m2_4.py`); this is
 the small-grid version that runs everywhere.
 """
 

@@ -2,10 +2,11 @@
 name: S00
 role: dev
 grid:
-  shape: [80, 64]          # (nz, nx) — vertical axis first
+  shape: [80, 64]          # (nz, nx) — vertical axis first; 800 nm holds the stack
   spacing_nm: 10.0
   periodic: [false, true]  # lateral periodic, vertical Neumann
 target_depth_nm: 500.0
+mask_thickness_nm: 100.0   # PROVISIONAL, same rule as S03 (S17.5); grid holds 100+500+100+100 = 800 nm
 rate:
   nm_per_s: 4.0
   measured: false

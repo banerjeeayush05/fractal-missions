@@ -135,6 +135,19 @@ def occupancy(phi: Array, grid: Grid, bands: BandConfig) -> Array:
     return jnp.sum(evaluation_weight(phi, grid, bands) > 0.0)
 
 
+def _fractions_at(material: Array, positions_nm: Array, grid: Grid) -> Array:
+    """Material fractions at the request POSITIONS -- the closest surface points -- by multilinear
+    interpolation. Shape `(K, n_materials)`.
+
+    Not the fractions at the cell. A band cell sits up to a band-width from the surface, and near a
+    layer boundary the material there is not the material the surface is actually in. Evaluating at
+    the cell would make the rate change when the BAND reaches a layer, a band-width too early.
+    """
+    coords = [positions_nm[a] / grid.spacing_nm - 0.5 for a in range(grid.ndim)]
+    return jnp.stack([map_coordinates(material[..., m], coords, order=1, mode="nearest")
+                      for m in range(material.shape[-1])], axis=-1)
+
+
 def build_request(phi: Array, material: Array, grid: Grid, bands: BandConfig, capacity: int,
                   time: Array, step_index: Array, stage_index: int,
                   run_seed: int) -> tuple[VelocityRequest, Array]:
@@ -166,12 +179,11 @@ def build_request(phi: Array, material: Array, grid: Grid, bands: BandConfig, ca
 
     points = closest_points(phi, grid).reshape(grid.ndim, -1)
     normals = unit_normal(phi, grid).reshape(grid.ndim, -1)
-    fractions = material.reshape(-1, material.shape[-1])
 
     return VelocityRequest(
         positions=points[:, cell_id].T,
         normals=normals[:, cell_id].T,
-        material_fractions=fractions[cell_id],
+        material_fractions=_fractions_at(material, points[:, cell_id], grid),
         weights=flat_weight[cell_id],
         cell_id=cell_id,
         n_active=jnp.sum(flat_weight[cell_id] > 0.0),

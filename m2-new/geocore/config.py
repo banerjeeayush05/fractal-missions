@@ -204,6 +204,11 @@ class CaseConfig:
     reinit: ReinitConfig = dataclasses.field(default_factory=ReinitConfig)
     bands: BandConfig = dataclasses.field(default_factory=BandConfig)
     w_mat_cells: float = 2.0
+    # Stage 17. Thickness of the mask body sitting on the film top, nm. Required when a material is
+    # marked `is_mask`, because the grid must hold the mask as well as the etch (PRD §5.1) and the
+    # vertical extent is DERIVED from it -- sizing the mask to fit a grid already chosen would be
+    # choosing physics to suit a number.
+    mask_thickness_nm: float | None = None
     spatial_scheme: str = "godunov"
     temporal_scheme: str = "rk2"
 
@@ -261,15 +266,30 @@ class CaseConfig:
     def _check_depth_fits(self) -> None:
         """PRD §5.1: the domain covers the stack plus the etch depth plus a buffer. Catching this
         here is worth a lot — the alternative is discovering it as an interface that reaches the
-        Neumann boundary and stalls, which looks like a physics result."""
+        Neumann boundary and stalls, which looks like a physics result.
+
+        With a mask the stack is `mask + etch depth`, and the buffer is needed at BOTH ends: 10 cells
+        of clearance under the final floor, and 10 above the mask top.
+        """
+        if self.mask is not None and self.mask_thickness_nm is None:
+            raise ConfigError(
+                f"case {self.name!r} declares material {self.mask.name!r} as the mask but gives no "
+                f"mask_thickness_nm. The grid's vertical extent is derived from it (PRD §5.1)."
+            )
+        if self.mask_thickness_nm is not None and self.mask_thickness_nm <= 0.0:
+            raise ConfigError(f"mask_thickness_nm must be positive, got {self.mask_thickness_nm}")
         from geocore.constants import VERTICAL_BUFFER_CELLS, VERTICAL_AXIS
 
         vertical_nm = self.grid.shape[VERTICAL_AXIS] * self.grid.spacing_nm
-        needed_nm = self.target_depth_nm + VERTICAL_BUFFER_CELLS * self.grid.spacing_nm
+        buffer_nm = VERTICAL_BUFFER_CELLS * self.grid.spacing_nm
+        mask_nm = self.mask_thickness_nm or 0.0
+        needed_nm = self.target_depth_nm + mask_nm + (2.0 if mask_nm else 1.0) * buffer_nm
         if vertical_nm < needed_nm:
             raise ConfigError(
-                f"vertical extent {vertical_nm:g} nm cannot hold a {self.target_depth_nm:g} nm "
-                f"etch plus a {VERTICAL_BUFFER_CELLS}-cell buffer ({needed_nm:g} nm needed)"
+                f"vertical extent {vertical_nm:g} nm cannot hold a {self.target_depth_nm:g} nm etch"
+                + (f" under a {mask_nm:g} nm mask" if mask_nm else "")
+                + f" plus {VERTICAL_BUFFER_CELLS}-cell buffer(s) ({needed_nm:g} nm needed). "
+                  f"The grid follows the stack, not the other way round."
             )
 
     # --------------------------------------------------------------------------- derived
@@ -309,7 +329,8 @@ class CaseConfig:
             f"{self.grid.spacing_nm:g} nm | depth {self.target_depth_nm:g} nm | "
             f"rate {self.rate.nm_per_s:g} nm/s "
             f"({'measured' if self.rate.measured else 'PROVISIONAL'}) | "
-            f"T {self.final_time_s:g} s | N {self.n_steps} "
+            + (f"mask {self.mask_thickness_nm:g} nm | " if self.mask_thickness_nm else "")
+            + f"T {self.final_time_s:g} s | N {self.n_steps} "
             f"(min {self.n_steps_min}) | dt {self.dt_s:g} s | {self.spatial_scheme}"
         )
 
@@ -372,7 +393,7 @@ def case_from_dict(raw: Mapping[str, Any], name_hint: str = "<dict>") -> CaseCon
         raw,
         allowed={"name", "role", "grid", "target_depth_nm", "rate", "velocity", "materials",
                  "cfl_target", "n_steps", "reinit", "bands", "w_mat_cells", "spatial_scheme",
-                 "temporal_scheme"},
+                 "temporal_scheme", "mask_thickness_nm"},
         required={"name", "role", "grid", "target_depth_nm", "rate", "velocity", "materials"},
         where=name_hint,
     )
@@ -429,6 +450,8 @@ def case_from_dict(raw: Mapping[str, Any], name_hint: str = "<dict>") -> CaseCon
         reinit=ReinitConfig(**{k: int(v) for k, v in reinit_raw.items()}),
         bands=BandConfig(**{k: float(v) for k, v in bands_raw.items()}),
         w_mat_cells=float(raw.get("w_mat_cells", 2.0)),
+        mask_thickness_nm=(float(raw["mask_thickness_nm"])
+                           if raw.get("mask_thickness_nm") is not None else None),
         spatial_scheme=str(raw.get("spatial_scheme", "godunov")),
         temporal_scheme=str(raw.get("temporal_scheme", "rk2")),
     )

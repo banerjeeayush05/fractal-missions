@@ -1,0 +1,78 @@
+# m2-new verification tiers (PRD §8.0).
+#
+# CI on a clean checkout is the ONLY writer of the ledger of record. A local run cannot produce one:
+# `--ledger-of-record` refuses a dirty tree, and every locally generated record says so on its face.
+#
+# The gate tier is not here. Its open items need an H100 (peak memory, warm adjoint ratio,
+# full-resolution 3D V14) or a second machine running ViennaPS (V22). `gate-plan` runs the parts of the
+# gate tier that need neither, so a broken gate case is caught before paid GPU time is spent.
+name: m2-new
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"          # nightly tier, 03:00 UTC
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: m2-new
+
+jobs:
+  fast:
+    name: fast tier (every commit, hard 180 s budget)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install (uv.lock must be current)
+        run: uv sync --locked
+      # NOT `-m fast`: a tier marker is only applied to tests that claim a check ID, so `-m fast`
+      # would run 15 tests and skip the 120 that verify everything else. The fast tier is "everything
+      # that is not nightly or gate".
+      - name: Fast tier
+        run: timeout 180 uv run pytest -m "not nightly and not gate" --ledger-of-record
+      - name: Upload verification ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-ledger-fast
+          path: m2-new/verification_ledger.json
+
+  nightly:
+    name: nightly tier (scheduled, 2D full + small 3D)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: Nightly tier — 60 min budget
+        run: timeout 3600 uv run pytest -m "not gate" --ledger-of-record
+      - name: Generate the verification records
+        if: always()
+        run: |
+          uv run python -m geocore.verification.report verification > verification.md
+          uv run python -m geocore.verification.report gradient > gradient_verification.md
+          uv run python -m geocore.verification.report simplifications > simplifications.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-records
+          path: |
+            m2-new/verification_ledger.json
+            m2-new/verification.md
+            m2-new/gradient_verification.md
+            m2-new/simplifications.md
+
+  gate-plan:
+    name: gate tier — the parts that need no GPU
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: S03 plan, w_mat study, V22 harness
+        run: uv run pytest -m gate -s

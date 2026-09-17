@@ -3,10 +3,16 @@
 name: S03
 role: dev
 grid:
-  shape: [270, 100, 100]   # (nz, ny, nx); 21.6 MB per fp64 field
+  shape: [290, 100, 100]   # (nz, ny, nx); 23.2 MB per fp64 field
   spacing_nm: 10.0
   periodic: [false, true, true]
 target_depth_nm: 2500.0    # CD 500 nm, pitch 1000 nm, depth 2500 nm at dx = 10 nm
+# Hard-mask thickness. PROVISIONAL (S17.5): no coupon measurement yet. 200 nm is 8 % of the etch
+# depth, a conventional hard-mask-to-etch ratio for a 2.5 um silicon trench, and 20 cells at
+# dx = 10 nm, so the mask is resolved rather than a two-cell sliver.
+# The grid's 290 cells are DERIVED from it: 100 (bottom buffer) + 2500 (etch) + 200 (mask)
+# + 100 (top buffer) = 2900 nm (PRD §5.1).
+mask_thickness_nm: 200.0
 rate:
   nm_per_s: 4.0
   measured: false
