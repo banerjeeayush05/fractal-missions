@@ -10,6 +10,80 @@ commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
+## 2026-09-18 — The H100 prep found the memory gate broken, and fixed it (S20.5, S20.6, S20.7)
+
+> Alright lets do the H100 session. What commands do I need?
+
+Measuring k before renting the hardware, as `gate.py` says to, turned up three things. None of them
+would have been visible from a green test suite; the first would have wasted the session.
+
+### S20.6 — a WENO5 reinitialisation cycle was four fifths of the memory peak
+
+Re-measured k in 3D, both schemes, two grid sizes each, agreeing to 0.1 %:
+
+| | k_step | k_reinit (stored) | k_reinit (rematerialised) |
+|---|---|---|---|
+| godunov | 344.1 / 344.3 | 136.1 | **11.0** |
+| weno5 | 598.3 / 598.0 | **2291.7** | **11.0** |
+
+k_step at 1.74x was expected. k_reinit at 16.8x was not: a cycle is `n_reinit` iterations, and under
+WENO5 each is three SSP-RK3 stages of WENO reconstructions, so reverse mode held all of it at once.
+Modelled peak for S03 (N = 625, 23.2 MB per field):
+
+    stored           625 persistent + (1 x 598 + 2291) transient = 3514 fields = 81.5 GB
+    rematerialised   625 persistent + (1 x 598 +   11) transient = 1234 fields = 28.6 GB
+
+against a 40 GB budget. **The gate was failing by 2x under the new default and nothing said so**,
+because the only thing that measures it is a GPU run.
+
+Each iteration is now wrapped in `jax.checkpoint`, inside `reinitialize`, and the cycle again inside
+the solver's step. Rematerialisation normally trades time for memory; here it bought both, because
+storing that many fields costs more in memory traffic than recomputing them:
+
+| 200-step 2D solve | stored | rematerialised |
+|---|---|---|
+| gradient run | 17.47 s | **3.21 s** |
+| adjoint ratio | 43.3x | **7.58x** |
+| dJ | — | identical to ten digits (agree to 2.9e-13) |
+
+It is not free everywhere: V17 in 3D went 28 s to 137 s, because for short runs the stored residuals
+fit comfortably and the recompute is pure overhead. The nightly absorbs it.
+
+`gate.py` now carries `K_STEP_3D` and `K_REINIT_3D` as per-scheme dicts with a `k_for()` that RAISES
+on an unmeasured scheme rather than defaulting, and `memory_model` takes the scheme. A silent
+fallback to Godunov's k is how a memory model comes to describe a solver nobody is running.
+
+### S20.7 — the default was defined in two places, and only one of them moved
+
+`load_case` read `raw.get("spatial_scheme", "godunov")`. That literal was missed on 2026-09-17, so
+`CaseConfig()` said weno5 while **every case loaded from YAML said godunov** — including S03, and
+therefore the entire M2.4 gate. Invisible, because both values are legal and the solver runs happily
+either way. The loader now defers to the dataclass field, `temporal_scheme` with it, and
+`test_the_default_spatial_scheme_is_defined_in_exactly_one_place` asserts against the field rather
+than against the string "weno5", so it keeps working the next time the default moves.
+
+### S20.5 — V17 asserted bitwise where the spec says 1e-12
+
+V17 failed in 2D and 3D on `assert jnp.array_equal(diag.cfl, diag_ref.cfl)`. Measured, the
+difference is **one ulp**: 2.776e-17 absolute, 1.388e-16 relative, identical at every segment length
+including 1, and absent under Godunov — the checkpointed path fuses differently from the unchecked
+one on a larger graph. The gradient, which is what V17 is about, agrees to 3.0e-15 in 2D and 8.4e-15
+in 3D against its 1e-12 tolerance.
+
+The registry specifies `bitwise on keys; 1e-12 relative on the trajectory`. The bitwise assertion on
+CFL was an auxiliary guard, stricter than anything V17 or V18 requires, and it is now the specified
+1e-12. Occupancy stays exact — it counts cells, so any difference would mean a different trajectory
+rather than the same one rounded differently. V18's bitwise RNG guarantee is untouched and still
+passes: `draws_bitwise_identical_on_replay: true`.
+
+### What this does to the H100 session
+
+The session still needs to happen, and now measures something worth measuring. Modelled peak is
+28.6 GB of 40 GB under WENO5 and 22.7 GB under Godunov; both the adjoint ratio and the peak are
+predictions until the GPU reports them. Tracked in S15.4.
+
+---
+
 ## 2026-09-18 — S20.4 settled: five checks move to nightly, the 180 s budget is not raised
 
 > Alright make the CI go green, measure the nightly.

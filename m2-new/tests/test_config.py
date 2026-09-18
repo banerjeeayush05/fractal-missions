@@ -10,12 +10,12 @@ import pytest
 import yaml
 
 from geocore.config import (
-    ConfigError, Role, case_from_dict, load_case, require_calibration_case, require_measured_rate,
+    CaseConfig, ConfigError, Role, case_from_dict, load_case, require_calibration_case,
+    require_measured_rate,
 )
+from geocore.schema import Grid
+from geocore.solver import SolvePlan
 
-
-def _raw(path: str) -> dict:
-    return yaml.safe_load(pathlib.Path(path).read_text())
 
 
 # ---------------------------------------------------------------------------- derivations
@@ -105,6 +105,31 @@ def test_an_unmasked_case_needs_only_one_buffer():
     raw["materials"] = [{"name": "film", "index": 0}]
     raw["grid"]["shape"] = [270, 100, 100]
     assert case_from_dict(raw, "test").mask is None
+
+
+def test_the_default_spatial_scheme_is_defined_in_exactly_one_place():
+    """S20.7. A config that does not name a scheme must get the SOLVER's default, not a literal
+    repeated in the loader.
+
+    `load_case` used to read `raw.get("spatial_scheme", "godunov")`. When the default moved to
+    weno5 on 2026-09-17 that line was missed, so `CaseConfig()` said weno5 while every case loaded
+    from YAML said godunov -- including S03, and therefore the entire M2.4 gate. It was invisible
+    because both values are legal and the solver runs happily either way.
+
+    Asserted against the dataclass field rather than against the string "weno5", so this test keeps
+    holding when the default next moves, which is the only way it can catch the same bug twice.
+    """
+    default = CaseConfig.__dataclass_fields__["spatial_scheme"].default
+    for name in ("S00", "S03"):
+        raw = _raw(f"configs/dev/{name}.yaml")
+        assert "spatial_scheme" not in raw, f"{name} now names a scheme; this test assumes it does not"
+        assert case_from_dict(raw, name).spatial_scheme == default
+    # and an explicit value still wins
+    raw = _raw("configs/dev/S03.yaml")
+    raw["spatial_scheme"] = "godunov"
+    assert case_from_dict(raw, "test").spatial_scheme == "godunov"
+    # the solver's own default must agree with the config's, or "the default" means two things
+    assert SolvePlan(Grid((8, 8), 1.0, (False, True)), 1.0, 1).spatial_scheme == default
 
 
 def _raw(path: str) -> dict:

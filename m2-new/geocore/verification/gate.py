@@ -6,9 +6,15 @@ OPEN_QUESTIONS.md.
 
 **What is measured and what is modelled.** Persistent checkpoint storage -- one phi per segment -- is
 exact by construction. Transient storage, the residuals alive while one segment is replayed, is `L * k`
-from a k measured on smaller 3D grids (341-344 from 2,700 to 172,800 cells). The transient term
-dominates, so on a CPU the peak is a MODEL. Only a GPU run turns it into a measurement, and that number
-never enters the ledger of record.
+from a k measured on smaller 3D grids and shown independent of grid size over a 64x range. The
+transient term dominates, so on a CPU the peak is a MODEL. Only a GPU run turns it into a
+measurement, and that number never enters the ledger of record.
+
+k is per SCHEME (see `K_STEP_3D`), and the difference is not a detail: under `weno5` a stored
+reinitialisation cycle put the modelled S03 peak at 81.5 GB against a 40 GB budget. Rematerialising
+each iteration (S20.6) brings it to 28.6 GB. The model counts that cycle at its rematerialised cost;
+the replay's own residuals are live transiently during the backward pass, and whether that spike
+reaches `peak_bytes_in_use` is one of the things only the GPU run can say.
 
 On an H100:
 
@@ -40,19 +46,34 @@ from geocore.solver import SolvePlan, StepContext, _step, assert_cfl, evolve
 from geocore.velocity import directional
 
 __all__ = ["build_s03", "forward_plan", "gradient_run", "memory_model", "device_peak_gb",
-           "K_STEP_3D_GODUNOV", "K_REINIT_3D_GODUNOV", "MEMORY_BUDGET_GB"]
+           "K_STEP_3D", "K_REINIT_3D", "k_for", "MEMORY_BUDGET_GB"]
 
-# Measured in 3D, Godunov (tests/test_3d.py pins the grid-size independence).
+# Residual factors measured in 3D, per spatial scheme (tests/test_3d.py pins the grid-size
+# independence at two sizes, to 0.1 %). k is the number of phi-sized fields reverse mode keeps alive
+# per unit of work; it is what turns a checkpoint schedule into a memory figure (finding I4).
 #
-# STALE FOR THE DEFAULT since 2026-09-17, when WENO5 became the default spatial scheme. These two
-# numbers, and every gate figure derived from them -- the 4.65x adjoint ratio, the 20.7 GB peak,
-# the checkpoint segment `segment_length_for` returns -- were measured on the H100 under Godunov and
-# remain correct FOR GODUNOV. In 2D WENO5's k is about 1.8x larger per step and about 5x larger per
-# reinitialisation cycle (S14.3's table, now in DECISIONS.md), so the memory model under-predicts the
-# default. Re-measuring needs the H100; tracked in S15.4. The names carry `_GODUNOV` so that no
-# caller can read them as describing whatever the default happens to be.
-K_STEP_3D_GODUNOV = 344.0
-K_REINIT_3D_GODUNOV = 141.0
+# Re-measured 2026-09-18, after WENO5 became the default and after reinitialisation iterations were
+# rematerialised (S20.6). Two things changed at once, so both are stated:
+#
+#   k_step     godunov 344 -> 344 (unchanged)      weno5 598      ~1.74x godunov
+#   k_reinit   godunov 141 -> 11                   weno5 11       2291.7 before rematerialisation
+#
+# The reinit number is the one that mattered. Storing a five-iteration WENO5 cycle's residuals put
+# the modelled S03 peak at 81.5 GB against a 40 GB budget; rematerialising each iteration brings it
+# to 28.6 GB. It is the same figure for both schemes because what survives is the scan carry, not
+# the scheme's arithmetic.
+K_STEP_3D = {"godunov": 344.0, "weno5": 598.0}
+K_REINIT_3D = {"godunov": 11.0, "weno5": 11.0}
+
+
+def k_for(scheme: str) -> tuple[float, float]:
+    """`(k_step, k_reinit)` for a spatial scheme. Raises rather than defaulting: a silent fallback
+    to Godunov's k is how a memory model comes to describe a solver nobody is running."""
+    if scheme not in K_STEP_3D:
+        raise KeyError(f"no measured k for spatial_scheme {scheme!r}; measure it before modelling")
+    return K_STEP_3D[scheme], K_REINIT_3D[scheme]
+
+
 MEMORY_BUDGET_GB = 40.0
 CONFIG = pathlib.Path(__file__).resolve().parents[2] / "configs/dev/S03.yaml"
 
@@ -165,7 +186,8 @@ def gradient_run(run: GateRun, n_steps: int | None = None, capacity: int | None 
     steps = n_steps or case.n_steps
     k = capacity or min(grid.n_cells, 3 * int(occupancy(run.phi0, grid, case.bands)))
     # segment=None -> derive L from measured k; segment=0 -> no checkpointing at all.
-    length = segment if segment is not None else segment_length_for(steps, K_STEP_3D_GODUNOV)
+    length = segment if segment is not None else segment_length_for(
+        steps, k_for(SolvePlan.from_case(run.case).spatial_scheme)[0])
     base = SolvePlan.from_case(case)
     plan = SolvePlan(grid, base.dt_s, steps, reinit_every=base.reinit_every, n_reinit=base.n_reinit,
                      spatial_scheme=base.spatial_scheme,
@@ -296,7 +318,8 @@ def ratio_scan(run: GateRun, lengths=(5, 25, 50, 100, 200), capacity: int | None
         row = {"n_steps": n, "forward_s": checked["forward_s"], "adjoint_s": checked["adjoint_s"],
                "ratio": checked["adjoint_ratio"], "peak_gb": checked["peak_gb_measured"],
                "unchecked_ratio": None}
-        if n * K_STEP_3D_GODUNOV * (math.prod(run.grid.shape) * 8 / 1e9) < 0.6 * MEMORY_BUDGET_GB:
+        k_step_here = k_for(SolvePlan.from_case(run.case).spatial_scheme)[0]
+        if n * k_step_here * (math.prod(run.grid.shape) * 8 / 1e9) < 0.6 * MEMORY_BUDGET_GB:
             try:
                 plain = gradient_run(run, n_steps=n, capacity=capacity, segment=0)
                 row["unchecked_ratio"] = plain["adjoint_ratio"]
@@ -306,9 +329,17 @@ def ratio_scan(run: GateRun, lengths=(5, 25, 50, 100, 200), capacity: int | None
     return rows
 
 
-def memory_model(grid: Grid, n_steps: int, k_step: float = K_STEP_3D_GODUNOV,
-                 k_reinit: float = K_REINIT_3D_GODUNOV) -> dict:
-    """Peak memory for the checkpoint schedule derived from measured k (finding I4)."""
+def memory_model(grid: Grid, n_steps: int, scheme: str = "weno5", k_step: float | None = None,
+                 k_reinit: float | None = None) -> dict:
+    """Peak memory for the checkpoint schedule derived from measured k (finding I4).
+
+    `scheme` selects the measured pair. It defaults to the solver's default rather than to Godunov,
+    so the model describes what actually runs.
+    """
+    if k_step is None or k_reinit is None:
+        measured_step, measured_reinit = k_for(scheme)
+        k_step = measured_step if k_step is None else k_step
+        k_reinit = measured_reinit if k_reinit is None else k_reinit
     field_gb = math.prod(grid.shape) * 8 / 1e9
     segment = segment_length_for(n_steps, k_step)
     persistent = math.ceil(n_steps / segment)
@@ -348,7 +379,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     run = build_s03()
-    model = memory_model(run.grid, run.case.n_steps)
+    scheme_here = SolvePlan.from_case(run.case).spatial_scheme
+    model = memory_model(run.grid, run.case.n_steps, scheme_here)
     sizing = size_capacity(run, n_steps=args.steps)
     devices = [str(d) for d in jax.devices()]
     print("=" * 78)
@@ -390,10 +422,12 @@ def main(argv: list[str] | None = None) -> int:
             gradient = gradient_run(run, n_steps=args.steps, capacity=sizing["capacity"],
                                     segment=segment)
             measured = gradient["peak_gb_measured"]
-            modelled = memory_model(run.grid, args.steps or run.case.n_steps)["peak_gb"] \
+            modelled = memory_model(run.grid, args.steps or run.case.n_steps,
+                                    scheme_here)["peak_gb"] \
                 if gradient["segment"] == model["segment"] else \
                 (math.ceil((args.steps or run.case.n_steps) / gradient["segment"])
-                 + gradient["segment"] * K_STEP_3D_GODUNOV + K_REINIT_3D_GODUNOV) * model["field_gb"]
+                 + gradient["segment"] * k_for(scheme_here)[0]
+                 + k_for(scheme_here)[1]) * model["field_gb"]
             print(f"  {gradient['segment']:2d}   {gradient['forward_s']:9.2f} s   "
                   f"{gradient['adjoint_s']:10.2f} s   {gradient['adjoint_ratio']:6.2f}x   "
                   + (f"{measured:8.1f} GB" if measured is not None else "       n/a")
@@ -429,7 +463,8 @@ def main(argv: list[str] | None = None) -> int:
         base = SolvePlan.from_case(run.case)
         plan = SolvePlan(run.grid, base.dt_s, args.steps or run.case.n_steps,
                          reinit_every=base.reinit_every, n_reinit=base.n_reinit,
-                         checkpoint_segment=segment_length_for(run.case.n_steps, K_STEP_3D_GODUNOV))
+                         checkpoint_segment=segment_length_for(
+                             run.case.n_steps, k_for(SolvePlan.from_case(run.case).spatial_scheme)[0]))
         field = BandedRateField(with_selectivity(directional, run.case.materials), run.grid,
                                 run.case.bands, 3 * int(occupancy(run.phi0, run.grid,
                                                                   run.case.bands)), run.fractions)

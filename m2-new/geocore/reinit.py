@@ -31,6 +31,7 @@ the closure parameters, and then fails to transfer.
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 from jax import Array, lax
 
@@ -85,17 +86,30 @@ def reinitialize(phi: Array, grid: Grid, n_iterations: int, scheme: str = "godun
     `n_iterations` is a Python int and must stay one. It fixes the graph at trace time; a traced
     value here would be a data-dependent loop count, which is the thing rule 2 forbids.
 
-    The iterations run under `lax.scan`, not a Python loop, so the body is traced ONCE instead of
-    `n_iterations` times. This is an implementation change only: `length` is still the static Python
-    int, `sign` is closed over and frozen exactly as before, and the arithmetic per iteration is
-    untouched. The unrolled and scanned forms agree to 1.7e-13 and give bit-identical gradients.
-    It matters because reinitialisation sits inside the per-step scan body, so under `weno5` an
-    unrolled cycle put `3 * n_iterations` WENO reconstructions into that body: compiling the
-    gradient of a 200-step solve took 133 s unrolled against 23 s scanned, and ran 21.0 s against
-    16.3 s (finding S20.1).
+    **The iterations run under `lax.scan`, and each one is rematerialised.** Both are implementation
+    choices, not changes to the arithmetic: `length` is still the static Python int, `sign` is closed
+    over and frozen exactly as before, and an iteration computes what it always did. The unrolled and
+    scanned forms agree to 1.7e-13, and stored and rematerialised gradients to 2.9e-13 -- fp
+    reassociation, well inside V17's 1e-12 -- with the objective's derivative unchanged to ten digits.
+
+    Both exist because this sits inside the per-step scan body, where its cost is multiplied by every
+    step of the run, and under `weno5` an iteration is three SSP-RK3 stages of WENO reconstructions.
+
+    * `lax.scan` instead of a Python loop (S20.1) traces the body ONCE rather than `n_iterations`
+      times. Compiling the gradient of a 200-step solve took 133 s unrolled against 23 s scanned,
+      and ran 21.0 s against 16.3 s.
+    * `jax.checkpoint` per iteration (S20.6) stops reverse mode holding every iteration's residuals
+      at once. Measured in 3D, a five-iteration cycle's residual factor k is **2291.7 stored against
+      11.0 rematerialised**. That is the number M2.4's 40 GB memory gate turns on, because those
+      residuals were four fifths of the modelled peak.
+
+    Rematerialisation usually trades time for memory. Here it buys both, which is worth stating
+    plainly: on a 200-step 2D solve the gradient ran 3.79 s stored against 3.21 s rematerialised and
+    the adjoint ratio went 9.23x -> 7.58x, because storing that many fields costs more in memory
+    traffic than recomputing them.
     """
     if not isinstance(n_iterations, int) or isinstance(n_iterations, bool) or n_iterations < 1:
         raise ValueError(f"n_iterations must be a positive Python int, got {n_iterations!r}")
     sign = smoothed_sign(phi, grid)
-    body = lambda carry, _: (reinit_iteration(carry, sign, grid, scheme), None)
-    return lax.scan(body, phi, None, length=n_iterations)[0]
+    iteration = jax.checkpoint(lambda carry: reinit_iteration(carry, sign, grid, scheme))
+    return lax.scan(lambda carry, _: (iteration(carry), None), phi, None, length=n_iterations)[0]

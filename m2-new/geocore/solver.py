@@ -242,9 +242,21 @@ def evolve(phi0: Array, params: Any, rate_fn: RateField,
             # Branch on the step INDEX only. `lax.cond` runs one side at run time; both sides are
             # traced, which is fine -- neither can produce a NaN on a finite phi.
             due = (step_index + 1) % plan.reinit_every == 0
+            # REMATERIALISED, not stored (finding S20.6). A reinitialisation cycle is
+            # `n_reinit` iterations, and under `weno5` each is three SSP-RK3 stages of WENO
+            # reconstructions, so its residuals dwarf the step's own: measured in 3D, storing them
+            # puts the step's residual factor k at 2889.9 against 599.3 when they are recomputed.
+            # `jax.checkpoint` keeps only the cycle's input and replays it on the backward pass.
+            #
+            # It costs nothing and buys both axes, which is unusual enough to state: on a 200-step
+            # 2D solve the gradient RUN went 17.47 s -> 3.69 s and the adjoint ratio 43.3x -> 8.56x,
+            # because storing that many fields costs more in memory traffic than recomputing them.
+            # The gradient is unchanged -- same value to ten digits, and the two agree to 2.4e-13,
+            # which is fp reassociation, inside V17's 1e-12.
             phi = jax.lax.cond(
                 due,
-                lambda f: reinitialize(f, plan.grid, plan.n_reinit, plan.spatial_scheme),
+                jax.checkpoint(
+                    lambda f: reinitialize(f, plan.grid, plan.n_reinit, plan.spatial_scheme)),
                 lambda f: f,
                 phi,
             )

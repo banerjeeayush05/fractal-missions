@@ -69,17 +69,30 @@ def test_v17_checkpointed_gradient_equals_unchecked(dimension, ledger_measure):
     (_, (phi_ref, diag_ref)), grad_ref = _gradient(grid, phi0, capacity, None)
 
     worst = 0.0
+    worst_cfl = 0.0
     per_segment = {}
     for segment in (1, 2, 3, 7, N_STEPS, 4 * N_STEPS):
         (_, (phi, diag)), grad = _gradient(grid, phi0, capacity, segment)
         rel = _max_relative(grad, grad_ref)
         per_segment[segment] = rel
         worst = max(worst, rel)
-        assert bool(jnp.array_equal(diag.cfl, diag_ref.cfl)), "per-step diagnostics must line up"
+        # The trajectory is specified to 1e-12 RELATIVE, not bitwise (registry V18: "bitwise on
+        # keys; 1e-12 relative on the trajectory"). It was asserted bitwise here, which is stricter
+        # than anything V17 or V18 asks for, and under the WENO5 default that is no longer true:
+        # the checkpointed path fuses differently from the unchecked one on a larger graph, so CFL
+        # moves by 2.776e-17 absolute, 1.388e-16 relative -- ONE ULP at 0.2, identical at every
+        # segment length including 1, and unchanged under Godunov. The gradient itself, which is
+        # what V17 is about, agrees to 3.0e-15 against its 1e-12 tolerance. See S20.5.
+        cfl_rel = float(jnp.max(jnp.abs(diag.cfl - diag_ref.cfl) / jnp.abs(diag_ref.cfl)))
+        worst_cfl = max(worst_cfl, cfl_rel)
+        assert cfl_rel < 1e-12, f"trajectory must line up to 1e-12, got {cfl_rel:.3e}"
+        # Occupancy stays EXACT. It counts cells in the band, so any difference at all would mean
+        # the replay took a different trajectory rather than the same one rounded differently.
         assert bool(jnp.array_equal(diag.occupancy, diag_ref.occupancy))
 
     ledger_measure(**{f"{dimension}_worst_relative_difference": worst,
                       f"{dimension}_by_segment": {str(k): v for k, v in per_segment.items()},
+                      f"{dimension}_worst_cfl_relative": worst_cfl,
                       "n_steps": N_STEPS, "tolerance": 1e-12})
     assert worst < 1e-12
 

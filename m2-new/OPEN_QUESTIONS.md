@@ -112,12 +112,30 @@ it is the one change that would turn a genuinely wrong gradient green.
 
 ## S15.4 — M2.4 gate status: measured on an H100, one item short
 
-**Status:** two items open, both needing the H100: full-resolution 3D V14, and a **re-measurement
-under WENO5**, which became the default later the same day (DECISIONS.md). Every number in this
-section is Godunov. WENO5's k is about 1.8x larger per step and about 5x larger per reinitialisation
-cycle, so the peak memory, the optimal segment L and the adjoint ratio all move, and by how much is
-not known. The adjoint ratio of 4.65x against a 4x target was accepted by the owner on 2026-09-17
-(DECISIONS.md) on the Godunov figure.
+**Status:** the whole section needs re-measuring on the H100. Every number below was measured under
+Godunov, and under a solver that has since changed twice: WENO5 became the default on 2026-09-17,
+and reinitialisation iterations were rematerialised on 2026-09-18 (S20.6). The adjoint ratio of
+4.65x was accepted by the owner on 2026-09-17 against the Godunov figure.
+
+k was re-measured in 3D on 2026-09-18 and the model rebuilt from it. What the session should now
+expect, all MODELLED:
+
+| | godunov | weno5 (the default) |
+|---|---|---|
+| k_step | 344 | 598 |
+| k_reinit | 11 | 11 |
+| segment L | 1 | 1 |
+| modelled peak, S03 | 22.7 GB | **28.6 GB** of 40 GB |
+
+Two of these are worth watching, because they are the two the model cannot settle:
+
+1. **Peak memory.** The model counts the reinit cycle at its rematerialised k of 11 fields. During
+   the backward pass the cycle is replayed, and the replay's own residuals are live transiently.
+   Whether that spike shows up in `peak_bytes_in_use` is exactly what the GPU reports and the CPU
+   cannot. If the measured peak lands far above 28.6 GB, that is the reason, and nesting the
+   rematerialisation one level deeper is the lever.
+2. **The adjoint ratio.** 7.58x measured on a 200-step 2D CPU solve after rematerialisation, from
+   43.3x before. The 4.65x that was accepted is a Godunov GPU number and does not carry over.
 Measured 2026-09-17 on one H100 80 GB (Lambda, Utah), `cuda:0`, Godunov, S03 at 290x100x100, N = 625.
 Hardware-gated numbers: recorded here, never in the ledger of record.
 
@@ -151,10 +169,11 @@ Owner accepted 2026-09-17: 4.65x stands as the measured figure. See DECISIONS.md
 ### Still needing hardware
 
 1. Full-resolution 3D V14 (`--full --v14`) was not run.
-2. Re-measure k, peak memory, the optimal L and the adjoint ratio under the WENO5 default, and
-   update `gate.py`'s `K_STEP_3D_GODUNOV` / `K_REINIT_3D_GODUNOV` with a WENO5 pair beside them.
-   Not blocking: the gate is an M2.4 artefact, M2.4 was signed off on Godunov, and the constants are
-   named for the scheme they were measured on so nothing silently reads them as the default.
+2. Re-run the whole gate under the WENO5 default and record peak memory, the optimal L and the
+   adjoint ratio. k itself no longer needs the GPU: it was re-measured in 3D on the laptop, both
+   schemes, and `gate.py`'s `K_STEP_3D` / `K_REINIT_3D` carry it per scheme with
+   `tests/test_3d.py` pinning both the grid-size independence and the agreement with those
+   constants.
 
 ---
 

@@ -452,8 +452,15 @@ def case_from_dict(raw: Mapping[str, Any], name_hint: str = "<dict>") -> CaseCon
         w_mat_cells=float(raw.get("w_mat_cells", 2.0)),
         mask_thickness_nm=(float(raw["mask_thickness_nm"])
                            if raw.get("mask_thickness_nm") is not None else None),
-        spatial_scheme=str(raw.get("spatial_scheme", "godunov")),
-        temporal_scheme=str(raw.get("temporal_scheme", "rk2")),
+        # Defer to the dataclass default rather than repeating a literal here. This line read
+        # `raw.get("spatial_scheme", "godunov")` and was missed when the default moved to weno5 on
+        # 2026-09-17, so every case loaded from YAML -- including S03, and therefore the whole M2.4
+        # gate -- silently stayed on Godunov while `CaseConfig()` said weno5. Two defaults for one
+        # decision is the bug; there is now one (finding S20.7, pinned by a test).
+        spatial_scheme=str(raw.get("spatial_scheme",
+                                   CaseConfig.__dataclass_fields__["spatial_scheme"].default)),
+        temporal_scheme=str(raw.get("temporal_scheme",
+                                    CaseConfig.__dataclass_fields__["temporal_scheme"].default)),
     )
 
 

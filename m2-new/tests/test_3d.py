@@ -25,7 +25,9 @@ from geocore.reinit import reinitialize
 from geocore.schema import Grid
 from geocore.solver import SolvePlan, _step, evolve, solve
 from geocore.velocity import directional, isotropic
+from geocore.reinit import reinitialize
 from geocore.verification.cost import residual_factor
+from geocore.verification.gate import K_REINIT_3D, K_STEP_3D
 from geocore.verification.gradcheck import (
     dot_product_test, forward_reverse_test, reverse_gradient, taylor_test,
 )
@@ -101,9 +103,15 @@ def test_a_sphere_shrinks_at_the_prescribed_rate_in_3d():
     assert abs(radii.mean() - expected) / expected < 0.01
 
 
-def test_residual_factor_does_not_depend_on_grid_size_in_3d():
-    """What lets k measured on a laptop size an H100 run. Measured 341-344 from 2,700 to 172,800
-    cells; the capacity K is sized from band occupancy at each size."""
+@pytest.mark.parametrize("scheme,low,high", [("godunov", 250.0, 450.0), ("weno5", 450.0, 750.0)])
+def test_residual_factor_does_not_depend_on_grid_size_in_3d(scheme, low, high):
+    """What lets k measured on a laptop size an H100 run, for BOTH schemes.
+
+    k is measured per scheme and asserted per scheme. It was written against Godunov alone and
+    inherited the default, so it failed the moment the default moved -- which is what it is for.
+    Measured 2026-09-18: godunov 344.1/344.3, weno5 598.3/598.0 across a 64x grid-size range, each
+    pair agreeing to 0.1 %. Those are the numbers in `gate.py`'s `K_STEP_3D`.
+    """
     from geocore.band import occupancy
 
     ks = []
@@ -111,7 +119,26 @@ def test_residual_factor_does_not_depend_on_grid_size_in_3d():
         grid, phi = _trench(nz, nl)
         capacity = min(grid.n_cells, max(64, 4 * int(occupancy(phi, grid, BANDS))))
         field = BandedRateField(directional, grid, BANDS, capacity, single_material(grid))
-        plan = SolvePlan(grid, 1.0, 1)
+        plan = SolvePlan(grid, 1.0, 1, spatial_scheme=scheme)
         ks.append(residual_factor(lambda q: _step(q, THETA, field, plan, jnp.int32(0))[0], phi))
     assert ks[0] == pytest.approx(ks[1], rel=0.05)
-    assert 250.0 < ks[0] < 450.0
+    assert low < ks[0] < high
+    assert ks[0] == pytest.approx(K_STEP_3D[scheme], rel=0.05), \
+        "gate.py's K_STEP_3D must track what is measured here, or the memory model describes " \
+        "a solver nobody is running"
+
+
+@pytest.mark.parametrize("scheme", ["godunov", "weno5"])
+def test_a_reinitialisation_cycle_is_rematerialised(scheme):
+    """S20.6. The cycle must not store its iterations' residuals.
+
+    This is the number M2.4's 40 GB budget turns on. Stored, a five-iteration WENO5 cycle's k is
+    2291.7 -- four fifths of the modelled S03 peak, which put it at 81.5 GB against the budget.
+    Rematerialised it is 11.0, and the same for Godunov, because what survives is the scan carry
+    rather than the scheme's arithmetic. Asserted well below the stored figure so that losing the
+    `jax.checkpoint` in `reinitialize` fails here rather than on rented hardware.
+    """
+    grid, phi = _trench(27, 10)
+    k = residual_factor(lambda q: reinitialize(q, grid, 5, scheme), phi)
+    assert k < 50.0, f"reinit cycle k = {k:.1f}; rematerialisation has been lost"
+    assert k == pytest.approx(K_REINIT_3D[scheme], rel=0.10)
