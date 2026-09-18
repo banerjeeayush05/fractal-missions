@@ -1,7 +1,10 @@
 """The M2.2 reinitialisation checks -- V1 (full travel), V11, V12 -- and the findings behind them.
 
-**Finding S12.1 -- reinitialisation drift is cumulative, and V12 cannot see it.** Known discrepancy,
-owner accepted 2026-09-16 (option c): re-measure after WENO5 at stage 14.
+**Finding S12.1 -- reinitialisation drift is cumulative, and V12 cannot see it. CLOSED 2026-09-17**
+by the move to WENO5 as the default (DECISIONS.md). It was accepted as a known discrepancy on
+2026-09-16 under option c -- re-measure after WENO5 -- and the re-measurement is what closed it:
+V1 -3.169 % -> -0.031 %, V12a 2.149 % -> 0.000 %. The diagnosis below is kept because it is what
+identified reinitialisation as the term to fix, and the numbers in it are Godunov numbers.
 
 Precise: V12 bounds the interface motion of ONE cycle on an exact distance function (measured
 0.066 % area). Over a run the solver applies 40 cycles, and the drift accumulates. Decomposing V1 at
@@ -23,11 +26,11 @@ Why it matters: PRD §8.3 names this exact failure -- reinitialisation that shif
 "produces a systematic etch-rate bias that looks like physics, calibrates away into the closure
 parameters, and then fails to transfer".
 
-V1's 1 % tolerance is met if the radius is measured along a grid axis (-0.84 %) and missed if it is
-the mean over directions (-3.17 %). The PRD does not say which. The mean is asserted, because
-choosing the one direction the grid favours would select the flattering answer; the test is
-`xfail(strict=True)` so the ledger records it as NOT passing, and so a fix cannot land unnoticed.
-The tolerance is unchanged.
+V1's 1 % tolerance was met under Godunov only if the radius was measured along a grid axis
+(-0.84 %) and missed on the mean over directions (-3.17 %). The PRD does not say which. The mean is
+asserted, because choosing the one direction the grid favours would select the flattering answer.
+Under the WENO5 default (owner decision, 2026-09-17) the mean is -0.031 %, so the question no longer
+decides the outcome and the discrepancy is closed. The tolerance is unchanged throughout.
 """
 
 import jax
@@ -64,8 +67,6 @@ def _field(grid):
 
 
 @pytest.mark.check("V1")
-@pytest.mark.xfail(strict=True, reason="S12.1 KNOWN DISCREPANCY (owner accepted 2026-09-16, option c): cumulative "
-                                       "reinit drift, mean radius -3.17 % against 1 %. Re-measure after WENO5.")
 def test_v1_full_travel_with_reinitialisation(ledger_measure):
     """P5 geometry: r0 = 300 nm, dx = 10 nm, R = 5.83 nm/s, T = 25.7 s, 200 steps -> r = 150.2 nm.
 
@@ -84,7 +85,7 @@ def test_v1_full_travel_with_reinitialisation(ledger_measure):
                    radius_axis_nm=float(radii[0]), radius_diagonal_nm=float(radii[9]),
                    relative_error_mean=float(mean_err),
                    relative_error_axis=float(abs(radii[0] - exact) / exact),
-                   finding="S12.1", reduced_form=False, peak_band_occupancy=result.peak_occupancy)
+                   reduced_form=False, peak_band_occupancy=result.peak_occupancy)
     assert mean_err < 0.01
 
 
@@ -117,14 +118,19 @@ def test_the_band_adds_no_error_over_evaluating_everywhere():
 
 
 def test_cumulative_reinit_drift_is_first_order_in_dx():
-    """S12.1 is a discretisation error, not a bug: halving dx halves it. Pinned so that a change
-    to reinitialisation shows up as a change in ORDER, not only as a changed number."""
+    """S12.1 was a discretisation error, not a bug: under Godunov, halving dx halves it.
+
+    Pinned at `spatial_scheme="godunov"` EXPLICITLY. This test documents the first-order Godunov
+    behaviour that motivated the move to WENO5; it is not a statement about the default. Reading it
+    on the WENO5 default is meaningless -- the drift there is 0.000 %, so the ratio is a ratio of
+    two numbers at the noise floor (measured 3.03, which is why this failed the moment the default
+    flipped). V12a below is the check that governs the default.""" 
     errors = []
     for dx, cells in ((10.0, 96), (5.0, 192)):
         grid, centre, phi0 = _disk_case(dx, cells)
         steps = int(200 * 10.0 / dx)
         r = solve(phi0, {"v0_nm_per_s": jnp.float64(RATE)}, constant_rate("v0_nm_per_s"),
-                  SolvePlan(grid, 25.7 / steps, steps, reinit_every=5))
+                  SolvePlan(grid, 25.7 / steps, steps, reinit_every=5, spatial_scheme="godunov"))
         errors.append(abs(radii_along_rays(r.phi, dx, centre).mean() - (300.0 - RATE * 25.7)))
     assert errors[0] / errors[1] == pytest.approx(2.0, rel=0.25)
 
@@ -181,9 +187,6 @@ def test_v12_reinitialisation_does_not_move_the_interface(ledger_measure):
 
 
 @pytest.mark.check("V12a")
-@pytest.mark.xfail(strict=True, reason="S12.1 KNOWN DISCREPANCY (owner accepted 2026-09-16): "
-                                       "reinit alone shifts the interface 2.15 % over the run, "
-                                       "against 1 % (S12.3). Re-measure after WENO5.")
 def test_v12a_accumulated_reinitialisation_drift_over_a_run(ledger_measure):
     """The interface displacement over a WHOLE RUN that reinitialisation alone is responsible for.
 
@@ -214,7 +217,7 @@ def test_v12a_accumulated_reinitialisation_drift_over_a_run(ledger_measure):
     ledger_measure(mean_shift_fraction=float(shift.mean()), max_shift_fraction=float(shift.max()),
                    signed_mean_shift_nm=float((with_reinit - without).mean()), n_cycles=40,
                    tolerance=0.01, tolerance_basis="S12.3 provisional: V1 forward tolerance",
-                   finding="S12.1")
+                   finding=None)
     assert shift.mean() < 0.01
 
 

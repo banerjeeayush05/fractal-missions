@@ -32,9 +32,24 @@ def _orders(errors, spacings):
 
 
 @pytest.mark.check("V6")
-def test_v6_spatial_order(ledger_measure):
-    """Refine dx over 4 levels at constant CFL; error against V1's analytic radius. Godunov >= 0.9.
-    Full product path: band and reinitialisation."""
+@pytest.mark.parametrize("scheme,required", [
+    ("godunov", 0.9),
+    pytest.param("weno5", 4.0, marks=pytest.mark.xfail(strict=True, reason=(
+        "S20.2 OPEN (raised 2026-09-17, when weno5 became the default): the registry requires "
+        "order >= 4 of weno5, and the full product path measures about 2.1. Finding J2 says why -- "
+        "the velocity extension's multilinear gather is second order, so it caps the order of the "
+        "whole path no matter how accurate the Hamiltonian is. The requirement is probably the "
+        "thing that is wrong, but that is the owner's call, so the tolerance is UNCHANGED and the "
+        "ledger records this as not passing."))),
+])
+def test_v6_spatial_order(ledger_measure, scheme, required):
+    """Refine dx over 4 levels at constant CFL; error against V1's analytic radius.
+    Full product path: band and reinitialisation.
+
+    Run for BOTH schemes, explicitly. The scheme is the thing under test here, so inheriting the
+    default would make the recorded number silently change meaning the day the default moved --
+    which is exactly what happened on 2026-09-17.
+    """
     l1, linf, spacings = [], [], []
     for dx in (8.0, 4.0, 2.0, 1.0):
         n = int(round(400.0 / dx))
@@ -44,7 +59,8 @@ def test_v6_spatial_order(ledger_measure):
         field = BandedRateField(isotropic, grid, BandConfig(), grid.n_cells // 4,
                                 single_material(grid))
         result = solve(sphere(grid, (centre, centre), 150.0), {"v0_nm_per_s": jnp.float64(RATE)},
-                       field, SolvePlan(grid, 60.0 / RATE / steps, steps, reinit_every=5))
+                       field, SolvePlan(grid, 60.0 / RATE / steps, steps, reinit_every=5,
+                                        spatial_scheme=scheme))
         error = np.abs(radii_along_rays(result.phi, dx, (centre, centre), r_max_nm=180.0) - 90.0)
         l1.append(float(error.mean()))
         linf.append(float(error.max()))
@@ -52,9 +68,9 @@ def test_v6_spatial_order(ledger_measure):
 
     o1, oinf = _orders(l1, spacings), _orders(linf, spacings)
     ledger_measure(dx_nm=spacings, l1_error_nm=l1, linf_error_nm=linf, l1_orders=o1,
-                   linf_orders=oinf, order_l1=o1[-1], order_linf=oinf[-1], required=0.9,
-                   scheme="godunov")
-    assert o1[-1] >= 0.9 and oinf[-1] >= 0.9
+                   linf_orders=oinf, order_l1=o1[-1], order_linf=oinf[-1], required=required,
+                   scheme=scheme, finding=None if scheme == "godunov" else "J2")
+    assert o1[-1] >= required and oinf[-1] >= required
 
 
 @pytest.mark.check("V7")

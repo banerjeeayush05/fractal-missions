@@ -10,6 +10,86 @@ commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
+## 2026-09-17 — WENO5 is the default spatial scheme (S12.1, S12.2, S14.3, G1 all closed)
+
+> Use WENO5 to to cut the drift, make it the default, close S18.3. Fix the other open questions later
+
+`SolvePlan.spatial_scheme` and `CaseConfig.spatial_scheme` now default to `"weno5"`. Godunov stays
+selectable and stays tested; nothing was deleted.
+
+**What it bought.** Every number below is on the same fixture (P5's disk, 96x96, dx = 10 nm,
+R = 5.83 nm/s, 200 steps), and no tolerance anywhere was changed:
+
+| check | what it measures | Godunov | WENO5 | tolerance |
+|---|---|---|---|---|
+| V1 | full-travel radius, mean over 72 directions | -3.169 % | **-0.031 %** | 1 % |
+| V12a | interface shift from reinitialisation alone, over a run | 2.149 % | **0.000 %** | 1 % (S12.3) |
+| V9 | reversibility, symmetric-difference area | 7.76 % | **0.002 %** | 3 % |
+| V12 | interface shift, one cycle | 0.066 % | **0.000 %** | 0.1 % |
+| V8 | Zalesak area loss | 42.95 % | passes | 2 % |
+| V14a | d(radius)/dR against -T | 1.9 % | passes | 1 % |
+
+Five `xfail(strict=True)` markers were deleted, not re-pointed: **S12.1** (cumulative drift),
+**S12.2** (reversibility), **G1** (Zalesak), and V1's and V14a's dependents. The discrepancies are
+gone, not accepted. S14.3 closes with them: it existed to hold the cost table until this decision.
+
+**The drift lives in reinitialisation, not advection.** Measured on all four pairings, which is how
+the cost was understood:
+
+| advection / reinitialisation | V1 error | V12a drift | gradient compile | gradient run |
+|---|---|---|---|---|
+| godunov / godunov | 3.169 % | 2.149 % | 3.5 s | 1.12 s |
+| weno5 / godunov | 2.005 % | 1.974 % | 5.6 s | 1.65 s |
+| godunov / weno5 | 1.007 % | 0.013 % | 121.9 s | 20.63 s |
+| weno5 / weno5 | 0.031 % | 0.000 % | 127.2 s | 20.96 s |
+
+There is no cheap hybrid. WENO5 reinitialisation buys essentially the whole improvement and carries
+essentially the whole cost, because SSP-RK3 (finding S14.1) evaluates the operator three times per
+iteration, five iterations per cycle.
+
+**The cost, and what was done about it.** The forward solve is only about 1.3x slower under WENO5,
+which is why this was not visible before: every earlier WENO5 measurement was forward-only. The
+GRADIENT is the expensive one. Two things were changed, neither of them arithmetic:
+
+1. **Reinitialisation iterations run under `lax.scan`** (finding S20.1, recorded in `reinit.py`).
+   They were a Python loop, so a cycle put `3 * n_reinit` = 15 WENO reconstructions into the
+   per-step scan body and the compiler saw every one. Same `length`, same frozen `sign`, same
+   arithmetic: the two forms agree to 1.7e-13 and the gradient is bit-identical to ten digits.
+   Gradient of a 200-step solve: compile **133 s -> 23 s**, run **21.0 s -> 16.3 s**.
+2. Fast-tier runtime after both changes: **271 s, against PRD §8.0's 180 s budget** (137 s under
+   Godunov). The budget was not raised and no test was quietly demoted. It is open as **S20.4**,
+   with options and a recommendation; without the `lax.scan` change it would have been far worse.
+
+**Two other things the switch surfaced**, both open, both tolerances unchanged: **S20.2**, V6's
+requirement of order >= 4 of WENO5, which the coupled path cannot meet because the velocity
+extension is second order (J2); and **S20.3**, one V14 direction whose Taylor remainder sank below
+the noise floor precisely because the solver got more accurate.
+
+**What this invalidates.** The M2.4 gate (S15.4) was measured on the H100 under Godunov: adjoint
+ratio 4.65x, peak memory 20.7 GB, and `gate.py`'s k constants `K_STEP_3D_GODUNOV = 344`,
+`K_REINIT_3D_GODUNOV = 141`. WENO5's k is about 1.8x larger per step and about 5x larger per
+reinitialisation cycle (the S14.3 table, now above), so **none of those gate numbers describe the
+default any more**. They are still correct for Godunov and are labelled as such. Re-measuring needs
+the H100 again; it is tracked in S15.4 and is not blocking, because the gate is an M2.4 artefact and
+the default changed after M2.4 was signed off.
+
+---
+
+## 2026-09-17 — S18.3 closed: a single timing call is not a measurement
+
+> ... close S18.3
+
+Kept as a closed lesson rather than an open item. The same N = 625 gradient measured **78.25 s** once
+and **18.78 s** another time -- same device, same capacity, same code. `gradient_run` timed one call
+after one warm-up, so it recorded whatever the device allocator was doing at that instant: the 78 s
+reading was the first large-stack gradient on a fresh device, the 18.78 s one came after smaller runs
+had grown its pools. That figure was reported as an 18x adjoint ratio and a failed gate item. It was
+neither; the ratio is 4.65x.
+
+Fixed in `geocore/verification/gate.py`: the gradient is timed as the **median of three warm calls**
+with the spread printed beside it (0.01 s at N = 625, so the number is stable). The rule this leaves
+behind: a benchmark reporting one number from one call cannot tell a result from an allocator state.
+
 ## 2026-09-17 — M2.8 (inverse sanity) built on Godunov, with WENO5 skipped
 
 > Alright do stage 19

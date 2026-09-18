@@ -232,9 +232,15 @@ invisible to `jax.grad` and produces a silently zero gradient column.
 
 Advection of φ under etch rate R:  ∂φ/∂t − R |∇φ| = 0   (decision §1; R > 0 removes material)
 
-- Spatial: Godunov upwind Hamiltonian for |∇φ|. WENO5 is an option behind a flag but is
+- Spatial: ~~Godunov upwind Hamiltonian for |∇φ|. WENO5 is an option behind a flag but is
   **not** required for M2 — first-order upwind with adequate resolution is sufficient to
-  verify gradients, and the extra stencil complexity is a place for bugs to hide.
+  verify gradients, and the extra stencil complexity is a place for bugs to hide.~~
+- **Amended (owner, 2026-09-17): WENO5 is the DEFAULT, in advection and in reinitialisation.**
+  Godunov stays selectable and stays tested. The premise struck out above — that first-order upwind
+  is sufficient to verify gradients — was shown false by measurement: under Godunov, V1 missed its
+  1 % tolerance at −3.169 %, V9 missed 3 % at 7.76 %, V12a missed 1 % at 2.149 %, and V14a inherited
+  the same drift at 1.9 %. Under WENO5 those read −0.031 %, 0.002 %, 0.000 % and pass, with no
+  tolerance changed. Findings S12.1, S12.2 and G1 close; the cost is in §5.3 and §6.
 - **Amended (owner, 2026-09-13): WENO5 is scheduled immediately after M2.3.** Measurement on the
   coupon geometry (finding H1, `git show b5b320c:m2/OPEN_QUESTIONS.md`) shows first-order costs ~1.4° of sidewall angle at dx = 10 nm
   — inside any metrology floor for CD (0.3 nm) and depth (0.1 nm), but ~3× V3's 0.5° requirement.
@@ -249,8 +255,10 @@ Advection of φ under etch rate R:  ∂φ/∂t − R |∇φ| = 0   (decision §1
   Three qualifications, each with a finding: the scheme-level order is **~2.08, not the ≥4 this
   document requires** (J2, capped by the second-order velocity-extension path — logged `xfail`,
   requirement unchanged); V8's area loss falls to 1.23 % but its notch criterion still fails (J4);
-  and **`godunov` remains the default pending an owner decision** (J5), because WENO5's effect on
-  the residual factor k — which sets M2.4's checkpoint schedule (I4) — has not been measured.
+  and ~~**`godunov` remains the default pending an owner decision** (J5)~~ — **decided 2026-09-17,
+  WENO5 is the default**; J5's open worry, WENO5's effect on the residual factor k, is measured in
+  2D (≈1.8× per step, ≈5× per reinitialisation cycle) and still unmeasured in 3D, which is why
+  §6's gate figures are labelled Godunov-only rather than restated.
 - **The regulariser deviates from the published scheme, deliberately** (J0). Jiang & Peng use
   ε = 1e-6·max(v₁²…v₅²); that `max` over the stencil is a kink in the differentiated path, which
   §11 forbids, so ε is fixed. Safe because the smoothness indicators are built from v = Δφ/dx ≈
@@ -420,7 +428,7 @@ fit would otherwise absorb into a closure parameter and then fail to transfer.
 |---|---|---|
 | **M2.0** | Repo scaffold, `CLAUDE.md`, schema, config, CI, **verification ledger** | `pytest` green; sign convention asserted; **V19** passes (the canary is caught); ledger writes rows |
 | **M2.1** | 2D forward: advection, fixed-N stepping, CFL assertion. **Plus the velocity-request assembly** — evaluation band, padded set with `weights`/`cell_id`/`n_active`, K sizing, closest-point projection and gather — moved here from §5.4/M2.2 by the 2026-09-11 scope decision, so the contract is first exercised by checks with closed-form answers | **V1, V2 in reduced form** (travel held inside the extension band; full travel needs reinitialisation and runs at M2.2 — owner decision 2026-09-11, option A), **V1a, V20** |
-| **M2.2** | Reinitialisation, and the PDE-based extension option (§5.4's closest-point gather landed at M2.1) | **V8, V9, V10, V11, V12, V12a** — V12 especially, see §8.3. **Amended 2026-09-16:** V12a added (bounds drift accumulated over a run). The gate is accepted with a known discrepancy: V1 (full travel), V9 and V12a fail on cumulative reinitialisation drift (finding S12.1, owner option c); re-measure after WENO5 |
+| **M2.2** | Reinitialisation, and the PDE-based extension option (§5.4's closest-point gather landed at M2.1) | **V8, V9, V10, V11, V12, V12a** — V12 especially, see §8.3. **Amended 2026-09-16:** V12a added (bounds drift accumulated over a run). **Amended 2026-09-17:** the known discrepancy is CLOSED, not accepted — V1, V9 and V12a all pass under the WENO5 default (S12.1, S12.2) |
 | **M2.3** | **Reverse-mode adjoint, 2D.** Contract v0.2 stays provisional until the M3 owner signs off (decision §3) | **V14, V15, V16** on the smooth functional; **V14a/V14b/V14c** analytic sensitivities; ~~adjoint ≤3× forward in 2D unchecked~~ → **adjoint ratio measured and reported, not gated** (decision I5(a), owner 2026-09-13); k measured and the M2.4 numbers proposed. V5–V7 convergence orders reported |
 | **M2.4** | Checkpointing + 3D | **V17, V18**; 3D **V14** on case S03; peak memory **<40 GB** on one H100; recompute overhead ≤2× with two-level checkpointing; adjoint ratio **≤4×** warm wall-clock, **set here and measured on a checkpointed H100 run** (decision I5(a): the M2.3 2D-unchecked figure was a laptop measurement of a different thing and is not the number the product cares about); **the checkpoint count comes from measured k, not √N** (finding I4) (decision §7; the old 8 GB figure was fp32-sized and is withdrawn) |
 | **M2.5** | Differentiable extraction | **V13** including the sub-cell smoothness sweep; **V14** on `CD_mid` and `sidewall_angle`, not only the volumetric functional |
@@ -617,7 +625,9 @@ These have exact answers. Disagreement is unambiguous.
   (72 rays), not a single axis, because the grid axis is the direction with the least error. At full
   travel on P5's geometry V1 measures −3.17 % (−0.84 % along an axis). Accepted as a **known
   discrepancy** caused by cumulative reinitialisation drift; re-measure after WENO5. The tolerance
-  is unchanged.
+  is unchanged. **Amended 2026-09-17: re-measured, and the discrepancy is closed** — under the
+  WENO5 default the mean over 72 rays is **−0.031 %**, inside the 1 % tolerance by 32×, so the
+  radius definition no longer decides the outcome. The mean is still what is asserted.
 - **V2 — Plane translation.** Flat interface under constant V translates at exactly V with
   no distortion. Error < 0.1% — this one should be nearly exact, and if it is not the
   upwind scheme or the boundary condition is wrong.
@@ -652,7 +662,11 @@ cannot tell whether a discrepancy against ViennaPS is a bug or a grid.
   that the flag is off in production runs.
 - **V6 — Spatial order.** Fix dt very small, refine dx over ≥4 levels, measure L¹ and L∞
   error against V1's analytic solution. Godunov upwind must show observed order ≥ 0.9.
-  WENO5, if enabled, ≥ 4.
+  WENO5, if enabled, ≥ 4. **Amended 2026-09-17:** WENO5 is now the default, and this requirement is
+  the one thing the switch does not satisfy — the coupled path measures ≈2.1, capped by the
+  second-order velocity extension (J2), not by the Hamiltonian, whose own order is verified at 5.13.
+  V6 runs both schemes explicitly; the WENO5 case is `xfail(strict=True)` and the tolerance is
+  unchanged pending the owner's decision on S20.2.
 - **V7 — Temporal order.** Fix dx, refine dt. TVD-RK2 must show observed order ≥ 1.9.
 
 Report observed order, not just "error decreases." An order that is right by eye and

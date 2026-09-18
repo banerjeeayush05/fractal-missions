@@ -43,6 +43,14 @@ __all__ = ["build_s03", "forward_plan", "gradient_run", "memory_model", "device_
            "K_STEP_3D_GODUNOV", "K_REINIT_3D_GODUNOV", "MEMORY_BUDGET_GB"]
 
 # Measured in 3D, Godunov (tests/test_3d.py pins the grid-size independence).
+#
+# STALE FOR THE DEFAULT since 2026-09-17, when WENO5 became the default spatial scheme. These two
+# numbers, and every gate figure derived from them -- the 4.65x adjoint ratio, the 20.7 GB peak,
+# the checkpoint segment `segment_length_for` returns -- were measured on the H100 under Godunov and
+# remain correct FOR GODUNOV. In 2D WENO5's k is about 1.8x larger per step and about 5x larger per
+# reinitialisation cycle (S14.3's table, now in DECISIONS.md), so the memory model under-predicts the
+# default. Re-measuring needs the H100; tracked in S15.4. The names carry `_GODUNOV` so that no
+# caller can read them as describing whatever the default happens to be.
 K_STEP_3D_GODUNOV = 344.0
 K_REINIT_3D_GODUNOV = 141.0
 MEMORY_BUDGET_GB = 40.0
@@ -241,8 +249,13 @@ def profile_components(run: GateRun) -> list[dict]:
         "    request + gather": gather_only,
         "    closest points": lambda f: jnp.sum(closest_points(f, grid)),
         "    unit normals": lambda f: jnp.sum(unit_normal(f, grid)),
-        "  grad_mag (godunov stencil)": lambda f: jnp.sum(grad_mag_godunov(f, speed, grid)),
-        "reinit cycle (5 iterations)": lambda f: jnp.sum(reinitialize(f, grid, case.reinit.n_reinit)),
+        # Explicitly godunov: these feed K_STEP_3D_GODUNOV / K_REINIT_3D_GODUNOV, which are named
+        # for the scheme they were measured on. Reading the default here would have changed what
+        # they mean on 2026-09-17 without changing their names.
+        "  grad_mag (godunov stencil)": lambda f: jnp.sum(
+            grad_mag_godunov(f, speed, grid, scheme="godunov")),
+        "reinit cycle (5 iterations)": lambda f: jnp.sum(
+            reinitialize(f, grid, case.reinit.n_reinit, scheme="godunov")),
     }
 
     rows = []

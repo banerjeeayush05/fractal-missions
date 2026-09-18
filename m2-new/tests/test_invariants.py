@@ -1,7 +1,9 @@
 """Nightly invariants with no analytic solution: V8, V9, V10.
 
-**Finding S12.2 -- V9 fails at dx = 10 nm, and the cause is S12.1.** Known discrepancy, owner
-accepted 2026-09-16 with S12.1 (option c). Etch a 200 nm disk by 100 nm, then deposit 100 nm, 100 steps each:
+**Finding S12.2 -- V9 fails at dx = 10 nm, and the cause is S12.1. CLOSED 2026-09-17** with S12.1,
+by the WENO5 default: V9 now measures 0.002 % against its unchanged 3 % tolerance. The table below
+is the Godunov diagnosis that identified reinitialisation as the cause. Etch a 200 nm disk by 100 nm,
+then deposit 100 nm, 100 steps each:
 
     dx      advection only    + reinit every 5
     10 nm        3.11 %           7.76 %
@@ -9,7 +11,7 @@ accepted 2026-09-16 with S12.1 (option c). Etch a 200 nm disk by 100 nm, then de
    2.5 nm        0.74 %           1.95 %
 
 Both columns converge at first order; reinitialisation multiplies the error by about 2.5. Against
-the 3 % tolerance V9 passes only at dx <= 2.5 nm. The PRD does not specify V9's geometry; this one
+the 3 % tolerance V9 passed only at dx <= 2.5 nm under Godunov. The PRD does not specify V9's geometry; this one
 uses V1's grid vocabulary with the disk clear of every edge, chosen before it was measured.
 """
 
@@ -57,13 +59,14 @@ def zalesak_disk(grid):
 
 
 @pytest.mark.check("V8")
-@pytest.mark.xfail(strict=True, reason="G1 KNOWN DISCREPANCY (owner accepted 2026-09-11): "
-                                       "first-order Godunov diffuses Zalesak's disk. Tolerance unchanged.")
 def test_v8_zalesak_disk(ledger_measure):
     """One revolution. Area preserved to < 2 %; the notch survives (< 25 % filled, from J4).
 
-    Expected to fail, and for a recorded reason: G1 measured 43.0 % area loss at 100^2 under the
-    mandated first-order scheme, converging at about first order. This rebuild measures 42.95 %.
+G1 was the standing failure here: under the first-order Godunov scheme this lost 43.0 % of the
+    disk's area at 100^2 (the rebuild measured 42.95 %), because first-order upwinding diffuses a
+    sharp notch. WENO5 is the default from 2026-09-17 and the check passes on its own tolerance,
+    which was never changed. The Godunov number is kept in this docstring because it is the reason
+    the default moved.
     """
     grid = Grid((100, 100), 1.0, (False, True))
     phi0 = zalesak_disk(grid)
@@ -90,10 +93,11 @@ def test_v8_zalesak_disk(ledger_measure):
 
 
 @pytest.mark.check("V9")
-@pytest.mark.xfail(strict=True, reason="S12.2 KNOWN DISCREPANCY (owner accepted 2026-09-16 via S12.1 option c): "
-                                       "7.76 % against 3 %. Re-measure after WENO5.")
 def test_v9_reversibility(ledger_measure):
-    """Advect N steps under R, then N under -R. Symmetric-difference area < 3 %."""
+    """Advect N steps under R, then N under -R. Symmetric-difference area < 3 %.
+
+    S12.2: 7.76 % against 3 % under Godunov, because the drift that reinitialisation adds does not
+    reverse with the rate. 0.002 % under the WENO5 default (2026-09-17). Tolerance unchanged."""
     grid = Grid((64, 64), 10.0, (False, True))
     phi0 = sphere(grid, (320.0, 320.0), 200.0)
     field = BandedRateField(isotropic, grid, BANDS, 1024, single_material(grid))
@@ -103,7 +107,7 @@ def test_v9_reversibility(ledger_measure):
     fraction = symmetric_difference_area(phi0, restored, 10.0) / solid_area(phi0, 10.0)
 
     ledger_measure(symmetric_difference_fraction=fraction, tolerance=0.03, travel_nm=100.0,
-                   measure="sub-cell zero contour (G2)", finding="S12.2")
+                   measure="sub-cell zero contour (G2)")
     assert fraction < 0.03
 
 

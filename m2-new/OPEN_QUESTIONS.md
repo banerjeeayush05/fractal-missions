@@ -17,210 +17,135 @@ decision — live in the docstring of the module they concern, not here.
 
 ---
 
-## S12.1 — Reinitialisation drift accumulates, and V12 cannot see it
+## S20.2 — V6 requires order >= 4 of WENO5, and the full product path gives about 2
 
-**Status:** KNOWN DISCREPANCY — owner accepted 2026-09-16, option c. Re-measure V1, V9 and V14a
-after WENO5 (stage 14) and revisit with those numbers. Decision record:
-`decisions/2026-09-16-s12-1-and-s13-1.md`.
-**Additional question: decided 2026-09-16** — check V12a added (see S12.3).
-**Classification:** C (M2.2 gate accepted with this exception). **Working-agreement class: B** — it changes what a
-gate proves.
-**Gate affected:** M2.2. V1 (full travel) and V9 fail; both are recorded `xfail(strict=True)`.
+**Status:** open, raised 2026-09-17 when WENO5 became the default. **Classification:** A (the
+requirement is probably the thing that is wrong). **Class:** A under `WORKING_AGREEMENT.md` §2 --
+it adjusts a stated requirement, so it is announced, not acted on.
 
-### The issue
+The registry's V6 row reads `godunov >= 0.9; weno5 >= 4`. The Godunov half is measured and passes.
+The WENO5 half cannot pass on the FULL PRODUCT PATH, and not because the Hamiltonian is wrong.
 
-Reinitialisation restores φ to a signed distance function every 5 steps. Its one obligation is to
-do that **without moving the zero level set** (PRD §5.3, §8.3).
+Finding J2, from the original tree, is the reason: the velocity extension gathers rates to the band
+by normalised multilinear interpolation, which is **second order**. A fifth-order Hamiltonian
+downstream of a second-order gather gives a second-order path -- the measurement is about 2.1. The
+order of a composition is the order of its weakest link, and V6 as written measures the composition
+while its tolerance describes one link.
 
-Check V12 tests that obligation for **one** reinitialisation cycle, on an exact distance function,
-with no advection. It passes. A real run applies a cycle every `reinit_every` steps — 40 cycles in
-V1's 200 steps — and the small motion of each cycle **accumulates**. Nothing in the check registry
-bounds the accumulated motion directly. V1 at full travel is the first check that sees it, and it
-fails.
+Three ways this could be settled, for the owner:
 
-In plain terms: each reinitialisation cycle nudges the surface inward by an amount too small for
-V12 to fail. Forty of them shrink an etched disk by about 3 %, and they shrink it more along the grid
-diagonals than along the axes, so a round feature also turns slightly square.
-
-### Why it matters
-
-PRD §8.3, on V12: reinitialisation that shifts the interface "produces a systematic etch-rate bias
-that looks like physics, calibrates away into the closure parameters, and then fails to transfer."
-That is the failure mode here. Specifically:
-
-- **The bias is far above metrology.** 3 % of a 150 nm radius is about 5 nm. PRD H1 puts the
-  metrology floor at 0.3 nm for CD and 0.1 nm for depth.
-- **Gradient checks cannot catch it.** V14, V15 and V16 verify the derivative of the model against
-  the model. A model with drift is still smooth, so its gradient is correct *for the wrong model*.
-  Only forward checks with exact answers (V1, V9) see it.
-- **Calibration will absorb it.** A fit will lower an etch rate or yield by about 3 % to compensate,
-  and that parameter will then fail on any case with a different depth or number of cycles.
-- **It depends on grid spacing**, so parameters calibrated at one resolution do not transfer to
-  another.
-- **It is anisotropic.** Error is concentrated on diagonal surfaces, so sidewall angle and corners —
-  direct product metrics — are affected most, and a grid artefact can be mistaken for physical
-  anisotropy.
-- **It grows with run length.** The S03 coupon case runs 625 steps (125 cycles), three times V1.
-
-### What was tested, and what each run established
-
-All runs: isotropic etch of a solid disk, `R = 5.83 nm/s`, `n_reinit = 5`, `reinit_every = 5`,
-first-order Godunov, TVD-RK2. Area is the sub-cell zero-contour area (finding G2). Radius is read
-along 72 rays from the disk centre.
-
-**Run 1 — first full-travel etch.** P5 geometry: r₀ = 300 nm, dx = 10 nm, T = 25.7 s, 200 steps,
-exact final radius 150.169 nm.
-
-| configuration | radius | error |
+| option | what it says | consequence |
 |---|---|---|
-| no reinitialisation | 223.9 nm | stalls (the known band limit, finding G0) |
-| reinitialisation every 5 steps | 149.08 nm | −0.72 % |
+| **a.** Require `weno5 >= 1.9` on the product path, and check the fifth order separately on the bare Hamiltonian | The requirement was measuring the wrong thing | V6 passes; one new small check covers the reconstruction itself |
+| **b.** Keep `>= 4` and raise the extension to fifth order | The gather is the defect | Real work in `band.py`, and the gather is in the differentiated path, so V14 must be re-run |
+| **c.** Keep `>= 4` and record the failure permanently | The product does not meet its own stated order | A standing red check |
 
-Measured along a **single grid row**. Looked like a pass.
+**Recommendation: a.** The second-order gather is a deliberate design choice (it is what makes the
+closest-point projection differentiable and cheap), not an accident, and no M2 deliverable depends
+on fifth-order convergence of the coupled path. Option b is the only one that would change the
+product, and nothing has asked for it.
 
-**Run 2 — the same field, radius measured in 72 directions.**
+The tolerance is UNCHANGED until the owner decides. The WENO5 case is `xfail(strict=True)`, so the
+ledger records it as not passing and a fix cannot land unnoticed.
 
-| statistic | radius | error |
+---
+
+## S20.3 — One V14 direction lost its signal when the solver got more accurate
+
+**Status:** open, raised 2026-09-17. **Classification:** D (minor, but it makes a check red).
+**Class:** A under `WORKING_AGREEMENT.md` §2.
+
+`tests/test_extraction.py::test_diagnostic_decomposition_volume_and_cd_both_pass`, V14 on
+`solid_volume` over the etched trench fixture:
+
+| | Godunov | WENO5 |
 |---|---|---|
-| mean | 145.41 nm | **−3.17 %** |
-| along a grid axis | 148.92 nm | −0.84 % |
-| along a diagonal | 143.23 nm | −4.62 % |
+| clean directions | 20 / 20 | 19 / 20 |
+| slope range | 1.987 – 2.014 | 1.998 – 2.014 |
+| direction 18 | clean | `insufficient_signal` |
+| noise floor | 4.56e-11 | 3.55e-11 |
 
-First evidence of the problem. Run 1's single row happened to lie along the grid axis, which is the
-direction with the least error.
+`insufficient_signal` means the Taylor remainder for that one random direction never rose out of the
+noise floor anywhere in the swept window. The check could not measure; it did not measure something
+wrong. The same gradient vector scores 2.00 in the other nineteen directions, and a wrong gradient
+fails towards slope 1 rather than towards silence.
 
-**Run 3 — isolating the cause.** Three variants of the same etch at three grid spacings. Exactly one
-thing changes between adjacent columns. Error is in the mean radius.
+The cause is the improvement itself. The remainder is about `(h^2/2) v^T H v`; WENO5 makes the
+forward map smoother and the fixture's curvature along that direction smaller, so the signal sank
+below what fp64 resolves through a 20-step solve.
 
-| dx | rate everywhere, no reinit | rate everywhere, + reinit | band, + reinit |
-|---|---|---|---|
-| 10 nm | −1.02 % | −3.17 % | −3.17 % |
-| 5 nm | −0.50 % | −1.56 % | −1.56 % |
-| 2.5 nm | −0.25 % | −0.77 % | −0.77 % |
-
-- **Columns 2 and 3 agree to the third decimal.** The velocity band (stage 11) contributes no error.
-- **Column 1 to column 2:** adding reinitialisation roughly triples the error. Reinitialisation is
-  the dominant cause, contributing about −2.15 % at dx = 10 nm against −1.02 % from advection.
-- **Down each column:** halving dx halves the error. Both contributions are first-order
-  discretisation error, not a defect that grows without bound.
-
-**Run 4 — one cycle in isolation (this is V12).** Exact disk, r = 200 nm, 64×64 at dx = 10 nm, one
-cycle, no advection.
-
-| measure | value | tolerance |
+| option | what it does | risk |
 |---|---|---|
-| area change | 0.066 % | 0.1 % |
+| **a.** Give this fixture more steps or a coarser `dx`, so there is more curvature to see | Restores signal by making the case less trivial | Changes a fixture after seeing its result — must be justified by the physics, not the score |
+| **b.** Treat `insufficient_signal` as "not evidence" rather than "failure" when no direction is SHALLOW | Says plainly what the classification means | Weakens V14 unless the count of measurable directions is itself asserted |
+| **c.** Leave it red | Honest, costs a permanently failing check | — |
 
-A single cycle passes. The accumulated effect of 40 cycles, from Run 3, is about 2 % in radius.
+**Recommendation: b, with a floor on measurable directions** (for example, at least 18 of 20 must be
+clean AND none may be shallow). That is the statement V14 is actually making. It is not a tolerance
+change — no slope bound moves — but it does change a pass rule, so it is the owner's call.
 
-**Run 5 — V9 (reversibility).** Disk r = 200 nm, 64×64, etch 100 nm then deposit 100 nm, 100 steps
-each. Symmetric-difference area relative to the starting area:
+Widening the h window is not on the list. `gradcheck.py` warns against it in as many words, because
+it is the one change that would turn a genuinely wrong gradient green.
 
-| dx | no reinit | + reinit | tolerance |
-|---|---|---|---|
-| 10 nm | 3.11 % | **7.76 %** | 3 % |
-| 5 nm | 1.51 % | 3.89 % | 3 % |
-| 2.5 nm | 0.74 % | 1.95 % | 3 % |
+---
 
-Same pattern: reinitialisation multiplies the error by about 2.5, and both columns converge at first
-order. V9 passes only at dx ≤ 2.5 nm. V9's geometry is not specified by the PRD; this one was chosen
-before it was measured, using V1's grid vocabulary with the disk clear of every boundary. This is
-recorded as S12.2 in `tests/test_invariants.py` and shares S12.1's cause.
+## S20.4 — The fast tier costs 271 s under the WENO5 default, against a 180 s budget
 
-### Conclusions
+**Status:** open, raised 2026-09-17. **Classification:** C (it blocks CI). **Class:** A under
+`WORKING_AGREEMENT.md` §2 — the fix adjusts a requirement, so it is announced and not done quietly.
 
-1. The failures of V1 (full travel) and V9 are real, reproducible, and share one cause: cumulative
-   interface motion from reinitialisation.
-2. The velocity band is not involved.
-3. The error is first-order discretisation error, converging with dx. It is too large at the
-   resolutions the checks run at (10 nm, and 5 nm per finding G3).
-4. **V12 as specified cannot detect this.** It bounds one cycle; the product runs tens to hundreds.
-   That is a gap in the check design, independent of how the drift itself is resolved.
-5. **Whether V1 passes depends on an unspecified definition.** PRD §8.1 does not say which radius.
-   Along a grid axis V1 passes (−0.84 %); averaged over directions it fails (−3.17 %). The mean is
-   asserted, because the axis is the single direction the grid favours and selecting it would
-   select the flattering answer.
-6. **Unexplained discrepancy with the original tree.** `m2/` recorded Godunov V1 at 0.38 % (finding
-   G0) and 1.08 % (finding J2), both better than 3.17 % here. Either this reinitialisation drifts more
-   than the original, or the original measured radius differently (for example along an axis). This
-   has not been investigated.
+`uv run pytest -q -m "not nightly and not gate"` measured **271 s** on this laptop, against PRD
+§8.0's 180 s, which §11 restates as "do not let the fast tier exceed three minutes". It ran at 137 s
+under Godunov. The CI `fast` job has a 180 s timeout, so it fails now.
 
-### Options
+**The budget is not raised.** It is a real constraint: a per-commit tier nobody waits for is a tier
+nobody runs.
 
-| option | cost | what it buys | risk |
-|---|---|---|---|
-| **a.** Compare against `m2/`: its radius measure and its reinitialisation | about an hour | Determines whether this is a defect in this build or a measurement difference | None |
-| **b.** Subcell-fix reinitialisation (Russo–Smereka): hold interface-adjacent cells to φ₀ | a day or more | Removes the cause | Selects between stencils near the interface; must be shown clean under V14 at stage 13 |
-| **c.** Record as a known discrepancy; re-measure after WENO5 (stage 14) | none now | `m2/` recorded WENO5 cutting V1 radius error 120× | Reinitialisation drift may not respond to a better advection scheme |
-| **d.** Run V1 and V9 at dx = 2.5 nm | 4–8× runtime | Both pass | Chooses resolution to make checks pass; finding G3 set 5 nm, where both still fail |
-| **e.** Reinitialise less often or with fewer iterations | none | Less accumulated drift | Tuning `reinit_every` or `n_reinit` to pass a check — forbidden by PRD §11; also reintroduces the band limit |
-| **f.** Measure V1's radius along a grid axis | none | V1 passes | Hides exactly the bias PRD §8.3 warns about |
+**Where the time went.** The forward solve is only ~1.3x slower under WENO5; the GRADIENT is ~14x
+slower to run and, before the `lax.scan` change, ~36x slower to compile. The fast tier is mostly
+V14-family gradient checks, so it tracks the gradient, not the forward.
 
-**Recommendation: a first, then b or c.** Option a is cheap and decides whether the fix belongs in
-this code or in the check definition. If this reinitialisation is worse than the original, fix it
-(b). If the difference is measurement, the owner must choose V1's radius definition, then choose
-between b and c.
+Already recovered, and not a requirement change: reinitialisation now iterates under `lax.scan`
+instead of an unrolled Python loop (S20.1, `reinit.py`). Bit-identical gradients, compile 133 s ->
+23 s and run 21.0 s -> 16.3 s on a 200-step solve. Without it the fast tier would be far worse than
+271 s.
 
-Options d, e and f are rejected: each turns a failing check green without removing the cause.
+The eight most expensive tests, WENO5, in seconds:
 
-### Additional question for the owner — decided 2026-09-16
+    42.9  test_materials.py::test_v14_gradient_survives_crossing_into_a_material_layer
+    29.3  test_extraction.py::test_diagnostic_decomposition_volume_and_cd_both_pass
+    24.8  test_gradients_2d.py::test_v14a_disk_radius_sensitivity_is_minus_t
+    20.2  test_materials.py::test_widths_below_one_cell_change_nothing
+    15.4  test_extraction.py::test_v14_on_sidewall_angle
+    15.0  test_extraction.py::test_v14_on_cd_mid
+    13.7  test_gradients_2d.py::test_v14_taylor_remainder_through_the_solver
+    11.5  test_gradients_2d.py::test_v16_dot_product_through_the_solver
 
-Should the registry gain a check that bounds **accumulated** reinitialisation drift over a full run,
-rather than per cycle? **Yes.** Added as V12a; see S12.3.
-
-### Reproduce
-
-```bash
-cd m2-new
-uv run pytest tests/test_reinit.py tests/test_invariants.py -rx
-```
-
-| test | check | expected result |
+| option | fast tier after | what is lost |
 |---|---|---|
-| `tests/test_reinit.py::test_v1_full_travel_with_reinitialisation` | V1 | xfail — mean radius −3.17 % |
-| `tests/test_reinit.py::test_v12_reinitialisation_does_not_move_the_interface` | V12 | pass — 0.066 % |
-| `tests/test_reinit.py::test_the_band_adds_no_error_over_evaluating_everywhere` | — | pass — band cleared |
-| `tests/test_reinit.py::test_cumulative_reinit_drift_is_first_order_in_dx` | — | pass — error halves with dx |
-| `tests/test_reinit.py::test_reinitialisation_is_what_removes_the_band_limit` | — | pass — finding G0 |
-| `tests/test_invariants.py::test_v9_reversibility` | V9 | xfail — 7.76 % |
+| **a.** Move the four heaviest to nightly; keep the cheap gradient checks per-commit | ~154 s | A wrong gradient in the material-crossing or disk-radius path is caught within a day rather than within a commit |
+| **b.** Run the fast tier under Godunov, the nightly under WENO5 | ~137 s | The per-commit tier stops testing the default. Rejected unless the owner insists: it is the shape of bug this project exists to catch |
+| **c.** Halve the V14 direction count in the fast tier only, 20 -> 10 | ~200 s, still over | Halves V14's power everywhere it is cheap to keep |
+| **d.** Raise the budget | — | Forbidden by §11 |
 
-The `xfail` markers are `strict=True`: if either check starts passing, the suite fails, so a fix
-cannot land unnoticed. Tolerances are unchanged.
+**Recommendation: a.** It is the only one that keeps the per-commit tier honest about the default.
+The four tests moved are all V14 variants whose cheaper siblings stay behind, so a wrong gradient
+still fails within seconds of a commit — what moves to nightly is the coverage of specific paths,
+not the ability to detect the failure at all.
 
----
-
----
-
----
-
----
-
-## S14.3 — WENO5 cost
-
-**Status:** recorded. **Classification:** C (owner decision J5: whether WENO5 becomes the default).
-
-| quantity (2D, 40×32, CPU) | Godunov | WENO5 |
-|---|---|---|
-| k per step | 206 | 378 |
-| k per reinitialisation cycle | 101 | 529 (before RK3; RK3 raises it further) |
-| warm adjoint ratio, unchecked | 3.46× | 7.40× |
-| V14 | 20 clean | 18 clean, 2 degenerate (slope 2.24) |
-| V16 | 3.7e-15 | 8.6e-11, against 1e-10 |
-
-V16 under WENO5 passes with little margin. Godunov remains the default.
-
----
-
----
-
----
+No tier was changed pending the decision, so the fast tier currently measures 271 s and CI's fast
+job will time out. That is deliberate: it is the finding, visible rather than absorbed.
 
 ---
 
 ## S15.4 — M2.4 gate status: measured on an H100, one item short
 
-**Status:** the only item still open is full-resolution 3D V14, which needs a GPU. The adjoint
-ratio of 4.65x against a 4x target was accepted by the owner on 2026-09-17 (DECISIONS.md).
+**Status:** two items open, both needing the H100: full-resolution 3D V14, and a **re-measurement
+under WENO5**, which became the default later the same day (DECISIONS.md). Every number in this
+section is Godunov. WENO5's k is about 1.8x larger per step and about 5x larger per reinitialisation
+cycle, so the peak memory, the optimal segment L and the adjoint ratio all move, and by how much is
+not known. The adjoint ratio of 4.65x against a 4x target was accepted by the owner on 2026-09-17
+(DECISIONS.md) on the Godunov figure.
 Measured 2026-09-17 on one H100 80 GB (Lambda, Utah), `cuda:0`, Godunov, S03 at 290x100x100, N = 625.
 Hardware-gated numbers: recorded here, never in the ledger of record.
 
@@ -253,7 +178,13 @@ Owner accepted 2026-09-17: 4.65x stands as the measured figure. See DECISIONS.md
 
 ### Still needing hardware
 
-Full-resolution 3D V14 (`--full --v14`) was not run. It is the one remaining gate item that needs a GPU.
+1. Full-resolution 3D V14 (`--full --v14`) was not run.
+2. Re-measure k, peak memory, the optimal L and the adjoint ratio under the WENO5 default, and
+   update `gate.py`'s `K_STEP_3D_GODUNOV` / `K_REINIT_3D_GODUNOV` with a WENO5 pair beside them.
+   Not blocking: the gate is an M2.4 artefact, M2.4 was signed off on Godunov, and the constants are
+   named for the scheme they were measured on so nothing silently reads them as the default.
+
+---
 
 ---
 
@@ -295,6 +226,8 @@ fitted under.
 
 ---
 
+---
+
 ## S18.2 — `top_k` is half the step time on CPU
 
 **Status:** recorded, optimisation candidate. **Classification:** D. Profile on a 256x256 grid:
@@ -319,24 +252,6 @@ is proposed yet, and it should be re-profiled on the GPU first, where `top_k` be
 
 ---
 
-## S18.3 — A single timing call is not a measurement
-
-**Status:** fixed; recorded because it produced a wrong result that was reported as a gate failure.
-**Classification:** D.
-
-The same N = 625, L = 1 gradient measured **78.25 s** in one run and **18.78 s** in another, on the same
-device with the same capacity and the same code: a 4x difference in a computation that did not change.
-`gradient_run` timed a single call after one warm-up, so it recorded whatever the device allocator was
-doing at that instant -- the 78 s reading was the first large-stack gradient on a fresh device, the
-18.78 s one came after smaller runs had grown its pools.
-
-That figure was reported as an 18x adjoint ratio and a failed gate item. It was neither. The true ratio
-is 4.65x.
-
-Fixed: the gradient is timed as the **median of three warm calls**, and the spread is printed beside it
-(measured 0.01 s at N = 625, so the number is now stable). Lesson worth keeping: a benchmark that
-reports one number from one call cannot distinguish a result from an allocator state.
-
 ---
 
 ## S19.1 — P8's noise magnitudes are placeholders
@@ -356,6 +271,8 @@ test, and the test is only as meaningful as the numbers behind it.
 Note also that these are metrology REPEATABILITY figures, not accuracy: a fit can sit inside the
 interval and still be biased.
 
+---
+
 ## S19.2 — A NaN objective makes the optimiser report success at its starting point
 
 **Status:** recorded; pinned by a test. **Classification:** D.
@@ -370,4 +287,3 @@ because none of them had fitted anything.
 Two guards now: the observation heights are chosen to hold a wall across the whole search domain, and
 the fit asserts `result.nit > 0`. A test walks the corners of the domain and requires every observable
 to be finite.
-

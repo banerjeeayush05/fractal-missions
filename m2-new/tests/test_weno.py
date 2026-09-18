@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from geocore.config import CaseConfig
 from geocore.constants import WENO_BOUNDARY_FALLBACK_CELLS, WENO_EPS
 from geocore.initial import sphere
 from geocore.reinit import reinitialize
@@ -101,10 +102,29 @@ def test_unknown_schemes_are_rejected():
         SolvePlan(grid, 1.0, 1, spatial_scheme="eno2")
 
 
-def test_godunov_remains_the_default():
-    """Finding J5 in the original tree: making WENO5 the default is an owner decision, not made."""
+def test_weno5_is_the_default_and_godunov_is_still_selectable():
+    """Finding J5 was the owner decision on the default. **Made 2026-09-17: WENO5.**
+
+    Pinned in both directions. WENO5 must be what an unqualified `SolvePlan` and `CaseConfig` give,
+    because that is what the product runs and what the checks therefore measure; and Godunov must
+    still be reachable and unchanged, because the convergence checks compare the two and several
+    recorded findings are Godunov numbers that must stay reproducible.
+
+    **The STENCIL layer keeps `godunov` as its parameter default, deliberately, and that is asserted
+    here too.** `grad_mag_godunov`, `one_sided_differences` and `reinitialize` are given the scheme
+    by the plan on every product call; their own default exists only so the low-level Godunov tests
+    can call them bare. Flipping it would silently change what those tests measure. The place where
+    "the default" is decided is `SolvePlan` and `CaseConfig`, and nowhere else -- which is why the
+    only two product call sites that ever relied on the bare default, in `gate.py`'s component
+    profile, now name their scheme explicitly.
+    """
     grid = Grid((8, 8), 1.0, (False, True))
-    assert SolvePlan(grid, 1.0, 1).spatial_scheme == "godunov"
+    assert SolvePlan(grid, 1.0, 1).spatial_scheme == "weno5"
+    assert CaseConfig.__dataclass_fields__["spatial_scheme"].default == "weno5"
+    assert SolvePlan(grid, 1.0, 1, spatial_scheme="godunov").spatial_scheme == "godunov"
     phi = sphere(grid, (4.0, 4.0), 2.0)
-    assert bool(jnp.array_equal(grad_mag_godunov(phi, jnp.ones(grid.shape), grid),
-                                grad_mag_godunov(phi, jnp.ones(grid.shape), grid, scheme="godunov")))
+    speed = jnp.ones(grid.shape)
+    assert bool(jnp.array_equal(grad_mag_godunov(phi, speed, grid, scheme="godunov"),
+                                grad_mag_godunov(phi, speed, grid)))
+    assert not bool(jnp.array_equal(grad_mag_godunov(phi, speed, grid, scheme="weno5"),
+                                    grad_mag_godunov(phi, speed, grid)))

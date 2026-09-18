@@ -32,7 +32,7 @@ the closure parameters, and then fails to transfer.
 from __future__ import annotations
 
 import jax.numpy as jnp
-from jax import Array
+from jax import Array, lax
 
 from geocore.constants import REINIT_DTAU_OVER_DX
 from geocore.schema import Grid
@@ -84,10 +84,18 @@ def reinitialize(phi: Array, grid: Grid, n_iterations: int, scheme: str = "godun
 
     `n_iterations` is a Python int and must stay one. It fixes the graph at trace time; a traced
     value here would be a data-dependent loop count, which is the thing rule 2 forbids.
+
+    The iterations run under `lax.scan`, not a Python loop, so the body is traced ONCE instead of
+    `n_iterations` times. This is an implementation change only: `length` is still the static Python
+    int, `sign` is closed over and frozen exactly as before, and the arithmetic per iteration is
+    untouched. The unrolled and scanned forms agree to 1.7e-13 and give bit-identical gradients.
+    It matters because reinitialisation sits inside the per-step scan body, so under `weno5` an
+    unrolled cycle put `3 * n_iterations` WENO reconstructions into that body: compiling the
+    gradient of a 200-step solve took 133 s unrolled against 23 s scanned, and ran 21.0 s against
+    16.3 s (finding S20.1).
     """
     if not isinstance(n_iterations, int) or isinstance(n_iterations, bool) or n_iterations < 1:
         raise ValueError(f"n_iterations must be a positive Python int, got {n_iterations!r}")
     sign = smoothed_sign(phi, grid)
-    for _ in range(n_iterations):
-        phi = reinit_iteration(phi, sign, grid, scheme)
-    return phi
+    body = lambda carry, _: (reinit_iteration(carry, sign, grid, scheme), None)
+    return lax.scan(body, phi, None, length=n_iterations)[0]

@@ -106,9 +106,11 @@ class SolvePlan:
     temporal_scheme: str = "rk2"
     reinit_every: int | None = None     # None: no reinitialisation (analytic tests of advection)
     n_reinit: int = 5
-    # PRD §5.2. "godunov" is the default pending an owner decision (finding J5 in the original tree).
-    # The flag reaches reinitialisation as well as advection.
-    spatial_scheme: str = "godunov"
+    # PRD §5.2. WENO5 is the DEFAULT from 2026-09-17 (owner, finding J5): it cuts reinitialisation
+    # drift from 2.15 % to 0.002 % and V1's radius error 93x, at roughly double the adjoint cost. The
+    # flag reaches reinitialisation as well as advection, and under WENO5 reinitialisation steps with
+    # SSP-RK3 rather than forward Euler (S14.1).
+    spatial_scheme: str = "weno5"
     # V5 ONLY (PRD §8.2). A manufactured-solution source term S(grid, t) added to the right-hand
     # side. Never set in production: `from_case` leaves it None and a test asserts so. It is a
     # plan field rather than a global switch so it cannot leak from one run into another.

@@ -14,9 +14,11 @@ Mechanical rule applied: **1 %**, from three constraints.
 This rule was written AFTER the numbers below were measured. That is recorded rather than hidden:
 under it V14b and V14c pass and V14a fails, so it was not chosen to make everything pass.
 
-Measured: V14b 3.5e-5; V14c 1.6e-3 (v0) and 2.1e-3 (p); V14a 1.9e-2. V14a's failure is S12.1: with
-reinitialisation off and the travel held inside the band, the same derivative is correct (see
-`test_v14a_derivative_is_correct_without_cumulative_reinit_drift`).
+Measured under Godunov: V14b 3.5e-5; V14c 1.6e-3 (v0) and 2.1e-3 (p); V14a 1.9e-2. V14a's failure
+was S12.1, and the localisation is kept because it is what proved the derivative itself was sound:
+with reinitialisation off and the travel held inside the band, the same derivative is correct (see
+`test_v14a_derivative_is_correct_without_cumulative_reinit_drift`). S12.1 closed on 2026-09-17 when
+WENO5 became the default, and V14a passes on the unchanged tolerance.
 """
 
 import jax
@@ -150,11 +152,12 @@ def test_v14b_plane_depth_sensitivity_is_plus_t(ledger_measure):
 
 
 @pytest.mark.check("V14a")
-@pytest.mark.xfail(strict=True, reason="S12.1 KNOWN DISCREPANCY (owner accepted 2026-09-16): derivative inherits "
-                                       "cumulative reinit drift, 1.9 % against 1 %. Re-measure after WENO5.")
 def test_v14a_disk_radius_sensitivity_is_minus_t(ledger_measure):
     """dr/dR = -T on V1's full-travel geometry. Radius is the mean over 72 directions, for the same
-    reason as V1: the axis is the direction the grid favours."""
+    reason as V1: the axis is the direction the grid favours.
+
+    The derivative inherits whatever the forward map's cumulative reinitialisation drift is, so this
+    tracked S12.1 exactly: 1.9 % against 1 % under Godunov, passing under the WENO5 default."""
     grid = Grid((96, 96), 10.0, (False, True))
     field = BandedRateField(isotropic, grid, BANDS, 2400, single_material(grid))
     duration = 25.7
@@ -167,7 +170,7 @@ def test_v14a_disk_radius_sensitivity_is_minus_t(ledger_measure):
     d = jax.grad(radius)({"v0_nm_per_s": jnp.float64(5.83)})["v0_nm_per_s"]
     error = _relative(d, -duration)
     ledger_measure(derivative=float(d), expected=-duration, relative_error=error,
-                   tolerance=ANALYTIC_TOLERANCE, finding="S12.1")
+                   tolerance=ANALYTIC_TOLERANCE)
     assert float(d) < 0.0
     assert error < ANALYTIC_TOLERANCE
 

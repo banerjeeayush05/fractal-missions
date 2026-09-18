@@ -209,7 +209,7 @@ class CaseConfig:
     # vertical extent is DERIVED from it -- sizing the mask to fit a grid already chosen would be
     # choosing physics to suit a number.
     mask_thickness_nm: float | None = None
-    spatial_scheme: str = "godunov"
+    spatial_scheme: str = "weno5"      # owner decision 2026-09-17 (J5); see DECISIONS.md
     temporal_scheme: str = "rk2"
 
     def __post_init__(self) -> None:
