@@ -10,6 +10,45 @@ commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
+## 2026-09-18 — S20.4 settled: five checks move to nightly, the 180 s budget is not raised
+
+> Alright make the CI go green, measure the nightly.
+
+Option **a** of S20.4. The WENO5 default made the fast tier cost 271 s against PRD §8.0's 180 s.
+The budget stands; the tier's CONTENTS shrink. Moved, with the seconds they cost under WENO5:
+
+    42.6  test_materials.py::test_v14_gradient_survives_crossing_into_a_material_layer
+    29.7  test_extraction.py::test_diagnostic_decomposition_volume_and_cd_both_pass
+    29.2  test_gradients_2d.py::test_v14a_disk_radius_sensitivity_is_minus_t
+    19.2  test_materials.py::test_widths_below_one_cell_change_nothing
+    15.7  test_extraction.py::test_v14_on_sidewall_angle
+
+Each now carries `@pytest.mark.nightly` itself. The plugin already allowed a test to declare a
+SLOWER tier than its check ID implies (never a faster one), so no mechanism changed.
+
+**What stays per-commit is the point.** Every moved test has a cheaper sibling that stays behind, so
+a wrong gradient still fails within seconds of a commit — what moved to nightly is coverage of
+particular paths, not the ability to notice at all:
+
+| moved | what still guards that ground per-commit |
+|---|---|
+| V14 across a material boundary | `test_v14_taylor_remainder_through_the_solver`, and `test_the_mask_multiplier_is_fixed_at_zero_and_receives_no_gradient` |
+| V14a on the disk radius | `test_v14a_derivative_is_correct_without_cumulative_reinit_drift` |
+| V14 on sidewall angle | `test_v14_on_cd_mid` — V14 through extraction, same chain |
+| the §8.7 volume/CD decomposition | both of its halves run separately, and it is `xfail` under S20.3 anyway |
+| `w_mat` widths below one cell | the rest of `test_materials.py` |
+
+Rejected: running the fast tier under Godunov (it would stop testing the default, which is the bug
+class this project exists to catch), halving V14's directions (weakens the check everywhere it is
+cheap to keep), and raising the budget (§11 forbids it, and a tier nobody waits for is a tier nobody
+runs).
+
+Fast tier after the move: **144 s, 151 passed**, against 180 s — 36 s of margin. That is within a
+few seconds of what the tier cost under Godunov before the switch (137 s), which is the useful
+comparison: a CI runner that met the budget before meets it now.
+
+---
+
 ## 2026-09-17 — WENO5 is the default spatial scheme (S12.1, S12.2, S14.3, G1 all closed)
 
 > Use WENO5 to to cut the drift, make it the default, close S18.3. Fix the other open questions later

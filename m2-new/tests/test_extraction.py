@@ -145,6 +145,7 @@ def test_v14_on_cd_mid(etched, ledger_measure):
     assert float(gradient["p"]) < 0.0, "a more directional etch removes less from the walls"
 
 
+@pytest.mark.nightly  # S20.4: moved out of the fast tier when WENO5 became the default
 @pytest.mark.check("V14")
 def test_v14_on_sidewall_angle(etched, ledger_measure):
     grid, phi0, field, plan, theta = etched
@@ -155,6 +156,7 @@ def test_v14_on_sidewall_angle(etched, ledger_measure):
     assert float(gradient["p"]) > 0.0, "a more directional etch makes walls more vertical"
 
 
+@pytest.mark.nightly  # S20.4: moved out of the fast tier when WENO5 became the default
 @pytest.mark.xfail(strict=True, reason=(
     "S20.3 OPEN (raised 2026-09-17 by the WENO5 default): 19 of 20 directions are clean at slope "
     "1.998-2.014; direction 18 reports insufficient_signal, meaning its Taylor remainder never "

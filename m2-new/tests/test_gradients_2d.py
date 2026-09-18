@@ -151,6 +151,7 @@ def test_v14b_plane_depth_sensitivity_is_plus_t(ledger_measure):
 # ----------------------------------------------------------------------------------- V14a disk
 
 
+@pytest.mark.nightly  # S20.4: moved out of the fast tier when WENO5 became the default
 @pytest.mark.check("V14a")
 def test_v14a_disk_radius_sensitivity_is_minus_t(ledger_measure):
     """dr/dR = -T on V1's full-travel geometry. Radius is the mean over 72 directions, for the same

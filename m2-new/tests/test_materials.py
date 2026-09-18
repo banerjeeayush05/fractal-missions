@@ -148,6 +148,7 @@ def _crossing(width_cells):
     return jax.jit(lambda t: X.depth(evolve(phi0, t, field, plan)[0], grid, 40.0, 180.0)), params
 
 
+@pytest.mark.nightly  # S20.4: moved out of the fast tier when WENO5 became the default
 @pytest.mark.check("V14")
 def test_v14_gradient_survives_crossing_into_a_material_layer(ledger_measure):
     """The M2.6 gate. The floor starts 10 nm above a 30 nm SiGe marker (rate 0.3x) and crosses into it.
@@ -162,6 +163,7 @@ def test_v14_gradient_survives_crossing_into_a_material_layer(ledger_measure):
     assert float(objective(params)) > 50.0, "the floor must actually reach the marker"
 
 
+@pytest.mark.nightly  # S20.4: moved out of the fast tier when WENO5 became the default
 def test_widths_below_one_cell_change_nothing():
     """Finding S17.3. The fraction field is read at surface points by linear interpolation between grid
     nodes, which already smooths over one cell, so w_mat under a cell reproduces the 1-cell result."""
