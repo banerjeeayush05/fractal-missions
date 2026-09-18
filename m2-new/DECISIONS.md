@@ -10,6 +10,23 @@ commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
+## 2026-09-17 — M2.8 (inverse sanity) built on Godunov, with WENO5 skipped
+
+> Alright do stage 19
+
+Stage 19 runs on the default Godunov scheme. WENO5 was not finished first, and does not need to be: the
+synthetic measurement comes from the same solver being fitted, so discretisation error -- and S12.1's
+reinitialisation drift with it -- cancels exactly in the difference. Scheme accuracy cannot change
+whether the fitter recovers the parameters.
+
+Recorded with the result: a green M2.8 is therefore NOT evidence that the drift is harmless. Against a
+real wafer it would not cancel, which is the mechanism S12.1 describes.
+
+Measured, 8 independent noise draws, cold start at v0 = 1, p = 4 against a truth of v0 = 2, p = 2:
+median error 0.58 and 0.34 sigma, worst 2.09 and 1.72 sigma, against a parameter floor of 0.25 nm/s and
+0.21 propagated from P8's metrology noise. Three different cold starts converge to the same point, and
+V14 passes at the recovered parameters.
+
 ## 2026-09-17 — Observed order is read from the finest refinement pair (S13.2)
 
 > Keep the finest pair

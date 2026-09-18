@@ -336,3 +336,38 @@ is 4.65x.
 Fixed: the gradient is timed as the **median of three warm calls**, and the spread is printed beside it
 (measured 0.01 s at N = 625, so the number is now stable). Lesson worth keeping: a benchmark that
 reports one number from one call cannot distinguish a result from an allocator state.
+
+---
+
+## S19.1 — P8's noise magnitudes are placeholders
+
+**Status:** placeholder, `provisional: true`. **Classification:** B.
+
+M2.8 recovers parameters "to within the noise floor", and the floor comes from proposal P8: independent
+Gaussian noise per observable at CD 1.0 nm, depth 5 nm, sidewall angle 0.2 deg. P8 marks these
+provisional: they are the right order for CD-SEM and cross-section metrology at this feature size, not
+measurements. The real values come from repeated measurements of the same coupon feature, which is also
+what would make M2.8's tolerance defensible rather than chosen.
+
+Everything downstream follows from them: propagated through the Jacobian they give the parameter
+tolerance this build asserts against, 0.25 nm/s in v0 and 0.21 in p. Tighter metrology means a tighter
+test, and the test is only as meaningful as the numbers behind it.
+
+Note also that these are metrology REPEATABILITY figures, not accuracy: a fit can sit inside the
+interval and still be biased.
+
+## S19.2 — A NaN objective makes the optimiser report success at its starting point
+
+**Status:** recorded; pinned by a test. **Classification:** D.
+
+Extraction returns NaN where no wall exists at the requested height -- deliberate, so a missing feature
+is loud rather than a plausible number (S16.3). Inside a fit that becomes quiet: the first cold start
+tried here put the trench floor at 430.007 nm while CD was being read at 430 nm, so the objective was
+NaN, and L-BFGS-B returned its starting point after **zero iterations** with a successful status. The
+"recovered" parameters were the initial guess echoed back, and every draw agreed with every other draw
+because none of them had fitted anything.
+
+Two guards now: the observation heights are chosen to hold a wall across the whole search domain, and
+the fit asserts `result.nit > 0`. A test walks the corners of the domain and requires every observable
+to be finite.
+
