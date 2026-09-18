@@ -10,6 +10,36 @@ commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
+## 2026-09-17 — Five items settled in one pass (S12.3, S14.2, S17.5, S3.1, S4.1)
+
+> Skip S14.2, 1% is good for S12.3, keep 200 nm for S17.5, I don't care about the version name figure
+> that out, the roles names are fine
+
+**S12.3 — V12a's tolerance is 1 %.** Accepted. The mean interface shift attributable to
+reinitialisation alone, over a full run, must stay below V1's own forward tolerance: if
+reinitialisation may move the surface further than the check it runs inside allows, that check's verdict
+is decided by reinitialisation rather than by the physics. V12a currently measures 2.15 % and stays
+`xfail(strict=True)` under S12.1.
+
+**S14.2 — the WENO5 re-measurement is skipped.** WENO5's recorded numbers (V1 0.034 %, V9 0.009 %,
+V10 0.009 %, V12a 0.002 %, V14a 0.36 %, V6 order ~2) were measured BEFORE the SSP-RK3 fix of S14.1 and
+are not re-confirmed. Consequence, stated plainly: the revisit of S12.1 promised at stage 12 — "accept
+the drift now, re-measure after WENO5" — does not happen. The reinitialisation drift stands as accepted
+on the Godunov numbers alone, and WENO5's figures should be treated as indicative rather than measured
+until someone re-runs them. Godunov remains the default, so nothing in the shipped path depends on them.
+
+**S17.5 — mask thickness stays 200 nm.** Still `provisional`: no coupon metrology stands behind it. The
+grid height (290 cells) is derived from it, so a measured thickness would change the grid. S00 keeps
+100 nm on the same rule.
+
+**S3.1 — the velocity contract is v0.3.** Delegated to the build ("I don't care about the version name
+figure that out"). §5.0's field list is the one implemented and it includes `cell_id` and `n_active`,
+which §5.5's description of v0.2 does not mention; v0.3 is therefore the version that matches the code.
+`CONTRACT_PROVISIONAL` stays `True` — the version number is settled, the FREEZE is not, because PRD §5.5
+requires the M3 owner's sign-off and that has not happened.
+
+**S4.1 — the role vocabulary is `calibrate`, `validate`, `dev`.** Accepted as declared.
+
 ## 2026-09-17 — Adjoint ratio of 4.65x accepted (S15.4)
 
 > Just accept 4.65 adjoint ratio.

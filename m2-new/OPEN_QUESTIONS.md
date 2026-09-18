@@ -191,32 +191,6 @@ cannot land unnoticed. Tolerances are unchanged.
 
 ---
 
-## S12.3 — V12a's tolerance
-
-**Status:** provisional placeholder, `provisional: true`. **Classification:** B.
-**Working-agreement class: A**, announced when made. Owner set the check, not its tolerance.
-
-V12a compares two runs of V1's geometry that differ only in whether they reinitialise, with the rate
-applied everywhere so the run without reinitialisation does not stall at the band edge. The
-difference in final radius is attributable to reinitialisation.
-
-**Mechanical rule applied:** mean shift over 72 directions < **1 %** of the final radius — V1's own
-forward tolerance. If reinitialisation alone may move the interface further than the check it runs
-inside allows, that check's verdict is decided by reinitialisation rather than by the physics.
-
-| dx | cycles | mean shift | max shift (diagonal) | signed mean |
-|---|---|---|---|---|
-| 10 nm | 40 | **2.15 %** | 3.06 % | −3.23 nm |
-| 5 nm | 80 | 1.05 % | 1.55 % | −1.58 nm |
-
-V12a fails at dx = 10 nm and is recorded `xfail(strict=True)` under the S12.1 known discrepancy.
-Note that the rule was chosen before V12a's own measurement but after S12.1's Run 3, which already
-implied about 2.15 %; it was not chosen to pass.
-
-**Owner decision needed:** confirm or replace the 1 % rule.
-
----
-
 ---
 
 ## S13.2 — Which refinement pairs define "observed order"
@@ -250,19 +224,6 @@ V5 and V6 pass under either convention:
 
 ---
 
-## S14.2 — WENO5 re-measurement after the fix is incomplete
-
-**Status:** open. **Classification:** C (S12.1's revisit depends on it).
-
-The owner declared stage 14 finished. The full re-measurement under the fixed scheme was stopped to
-free the CPU (XLA compiles of about 5 minutes each). Confirmed after the fix: V8 (area −1.49 %, notch
-17.7 %, both within tolerance) and the dx = 1 disk (no holes). Measured **before** the fix, with
-forward-Euler reinitialisation, and not re-confirmed: V1 0.034 %, V12a 0.002 %, V9 0.009 %, V10 0.009 %,
-V14a 0.36 %, V6 order about 2 (finding J2's cap). Those runs showed no instability, so the numbers are
-likely to hold, but that is not a measurement. WENO5 variants of the check tests are not yet written.
-
-S12.1 (option c) is to be revisited with these numbers. Until they are re-confirmed, it is not.
-
 ---
 
 ## S14.3 — WENO5 cost
@@ -278,6 +239,8 @@ S12.1 (option c) is to be revisited with these numbers. Until they are re-confir
 | V16 | 3.7e-15 | 8.6e-11, against 1e-10 |
 
 V16 under WENO5 passes with little margin. Godunov remains the default.
+
+---
 
 ---
 
@@ -323,6 +286,8 @@ Full-resolution 3D V14 (`--full --v14`) was not run. It is the one remaining gat
 
 ---
 
+---
+
 ## S17.1 — w_mat sensitivity: small for the marker's own rate, large for the film's
 
 **Status:** reported, and the resolution question DECIDED 2026-09-17 (dx = 2 nm, w_mat 2 cells). **Classification:** C — owner should read before M2.8
@@ -353,21 +318,6 @@ fitted under.
 
 ---
 
-## S17.5 — The mask thickness is provisional
-
-**Status:** placeholder, `provisional: true`. **Classification:** B.
-
-200 nm has no coupon measurement behind it. *Mechanical rule:* a conventional hard-mask-to-etch ratio
-for a 2.5 um silicon trench is order 10 %, and 200 nm is 20 cells at dx = 10 nm, so the mask is resolved
-rather than a two-cell sliver. S00 carries 100 nm on the same rule. Both are dev configs and may never
-certify a claim of agreement with the coupon (`require_measured_rate`). When metrology supplies the real
-thickness, the grid height follows from it: `ceil((2 * buffer + depth + mask) / dx)` cells.
-
-Effect of the change on the M2.4 projection: field 21.6 -> 23.2 MB, modelled peak 24.0 -> 25.8 GB
-against the 40 GB budget. Band occupancy at the worst step rose from 36,200 to 41,600 cells.
-
----
-
 ---
 
 ## S18.2 — `top_k` is half the step time on CPU
@@ -387,6 +337,8 @@ against the 40 GB budget. Band occupancy at the worst step rose from 36,200 to 4
 both give 14.5 ms per step. Band occupancy is 2.3 % of cells, so 97 % of the work is spent ranking cells
 that will not be used. Fixing it means a selection that is static-shaped without a full ranking; nothing
 is proposed yet, and it should be re-profiled on the GPU first, where `top_k` behaves differently.
+
+---
 
 ---
 

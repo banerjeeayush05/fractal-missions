@@ -22,15 +22,12 @@ Deviations from the literal §5.0 text are recorded at the bottom of this docstr
 
 ---
 
-**S3.1 — the contract version is stated twice, differently.** Class A (PRD error).
-§5.0's code comment says "Contract v0.3". §5.5's amendment says "The contract is at **v0.2** and
-stays `provisional`". The fields §5.5 attributes to v0.2 (`run_seed`, `stage_index`, padded
-`positions`, `weights`) are all present in §5.0, which additionally carries `cell_id` and
-`n_active` from decisions A16 and B14 — so the likely reading is that v0.3 = v0.2 + those two and
-§5.5 was not updated. *Not resolved by guessing:* this module declares `CONTRACT_VERSION = "0.3"`
-because §5.0 is the block that actually lists the fields being implemented, and carries
-`CONTRACT_PROVISIONAL = True` because §5.5's *substantive* claim — not frozen until the M3 owner
-signs off — is unaffected either way. Needs an owner ruling before M2.3 freezes anything.
+**S3.1 — the contract version is v0.3.** SETTLED by the owner 2026-09-17 (DECISIONS.md).
+§5.0's code comment says "Contract v0.3"; §5.5's amendment says v0.2. §5.0 is the block that lists the
+fields actually implemented, and it carries `cell_id` and `n_active` from decisions A16 and B14, which
+§5.5's description of v0.2 does not mention. So v0.3 is the version matching the code.
+`CONTRACT_PROVISIONAL` stays True: the version number is settled, the FREEZE is not, because §5.5
+requires the M3 owner's sign-off.
 
 **S3.2 — the material-fraction axis order is unspecified.** Class D.
 §5.0 types `VelocityRequest.material_fractions` as `(K, n_materials)` — materials trailing — but
