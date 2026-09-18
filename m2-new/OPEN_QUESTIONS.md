@@ -285,7 +285,8 @@ V16 under WENO5 passes with little margin. Godunov remains the default.
 
 ## S15.4 — M2.4 gate status: measured on an H100, one item short
 
-**Status:** four of five items pass; the adjoint ratio misses narrowly and needs an owner decision.
+**Status:** the only item still open is full-resolution 3D V14, which needs a GPU. The adjoint
+ratio of 4.65x against a 4x target was accepted by the owner on 2026-09-17 (DECISIONS.md).
 Measured 2026-09-17 on one H100 80 GB (Lambda, Utah), `cuda:0`, Godunov, S03 at 290x100x100, N = 625.
 Hardware-gated numbers: recorded here, never in the ledger of record.
 
@@ -295,7 +296,7 @@ Hardware-gated numbers: recorded here, never in the ledger of record.
 | peak device memory | < 40 GB | **20.7 GB** | pass |
 | checkpoint schedule from measured k | L from k, not sqrt(N) | **L = 1**, and measured best | pass |
 | request capacity from the worst step | no overflow | 131,400 worst of 164,250 | pass |
-| warm adjoint ratio, checkpointed | <= 4x | **4.65x** | **miss** |
+| warm adjoint ratio, checkpointed | <= 4x | **4.65x** | accepted 2026-09-17 |
 | full-resolution 3D V14 | pass | not run | open |
 
 Compile time, reported separately per PRD §6: 9.8 s for the forward.
@@ -312,18 +313,9 @@ the design exactly -- 23.2 MB per step, one field each, 6.3 GB baseline plus 625
 granularity and any single expensive operation (the component profile measures 1.0-2.2x for every part
 of a step).
 
-### The open question: 4.65x against a 4x target
+### The adjoint ratio: 4.65x, ACCEPTED
 
-The target comes from decision I5(a), set at M2.4 on a different machine before this build existed, and
-this is a 16 % miss. Options:
-
-| option | cost | what it buys |
-|---|---|---|
-| a. Accept 4.65x, record it with the target's provenance | none | an honest number; nothing downstream is blocked |
-| b. Chase the last 16 % | days | `top_k` is half the forward step (S18.2); cutting it lifts BOTH the forward and the ratio |
-| c. Re-derive the 4x target from what M8's optimiser actually needs | hours of thinking | a target with a reason rather than an inherited number |
-
-**Recommend a now, b later.** The forward has 14x of headroom, so nothing is waiting on this.
+Owner accepted 2026-09-17: 4.65x stands as the measured figure. See DECISIONS.md.
 
 ### Still needing hardware
 

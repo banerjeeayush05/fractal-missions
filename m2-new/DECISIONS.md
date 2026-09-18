@@ -10,6 +10,21 @@ commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
+## 2026-09-17 — Adjoint ratio of 4.65x accepted (S15.4)
+
+> Just accept 4.65 adjoint ratio.
+
+The M2.4 gate asks for a warm adjoint ratio at or under 4x. Measured on one H100: **4.65x**, a 16 %
+miss, with the forward at 4.2 s against a 60 s budget and peak memory at 20.7 GB against 40 GB.
+
+Accepted as the measured figure rather than chased. The 4x target came from decision I5(a), set at M2.4
+on a different machine before this build existed, and nothing downstream is waiting on the difference.
+The ratio is flat in run length (4.28x at N = 5 to 4.63x at N = 625) and L = 1 is measured optimal, so
+this is the scheme's cost, not a schedule mistake.
+
+If it is ever worth chasing, the lead is `top_k`, which is half the forward step (S18.2) and would lift
+the forward time and the ratio together.
+
 ## 2026-09-17 — V3 (collimated aperture) put on hold (S18.1)
 
 > Ok so shelve V3 as well.
