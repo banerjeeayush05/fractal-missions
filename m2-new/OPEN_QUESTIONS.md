@@ -283,23 +283,51 @@ V16 under WENO5 passes with little margin. Godunov remains the default.
 
 ---
 
-## S15.4 — M2.4 gate status
+## S15.4 — M2.4 gate status: measured on an H100, one item short
 
-| item | result |
-|---|---|
-| V17 checkpointed = unchecked, 2D and 3D | pass — worst 2.4e-16, tolerance 1e-12 |
-| V18 replay reproduces draws bitwise; trajectory 1e-12 | pass — every stage replayed once, all copies bitwise identical |
-| 3D V14 / V15 / V16 (small grid) | pass — 20/20 clean; 2.6e-15; 1.9e-15 |
-| checkpoint count from measured k | L = 1 from k = 344 |
-| peak memory < 40 GB on one H100 | **open — needs H100** (modelled 24.0 GB) |
-| recompute overhead ≤ 2× | **open — needs H100** |
-| warm adjoint ratio ≤ 4×, checkpointed | **open — needs H100** |
-| full-resolution 3D V14 on S03 | **open — needs H100** (`scripts/gate_m2_4.py --v14`) |
+**Status:** four of five items pass; the adjoint ratio misses narrowly and needs an owner decision.
+Measured 2026-09-17 on one H100 80 GB (Lambda, Utah), `cuda:0`, Godunov, S03 at 290x100x100, N = 625.
+Hardware-gated numbers: recorded here, never in the ledger of record.
 
-The gate script does not yet instrument peak device memory itself; the report says to sample
-`nvidia-smi` during the gradient call. Worth adding before paying for the run.
+| gate item | target | measured | |
+|---|---|---|---|
+| forward wall-clock, warm | < 60 s | **4.2 s** (7 ms/step) | pass, 14x inside |
+| peak device memory | < 40 GB | **20.7 GB** | pass |
+| checkpoint schedule from measured k | L from k, not sqrt(N) | **L = 1**, and measured best | pass |
+| request capacity from the worst step | no overflow | 131,400 worst of 164,250 | pass |
+| warm adjoint ratio, checkpointed | <= 4x | **4.65x** | **miss** |
+| full-resolution 3D V14 | pass | not run | open |
 
----
+Compile time, reported separately per PRD §6: 9.8 s for the forward.
+
+**The memory model is conservative in the safe direction**: 25.8 GB modelled against 20.7 GB measured,
+so k = 344 measured on small grids over-predicts by about 25 % at full size. Persistent storage tracked
+the design exactly -- 23.2 MB per step, one field each, 6.3 GB baseline plus 625 fields.
+
+**L = 1 is optimal, not merely derived.** Measured ratios: L = 1 gives 4.65x at 20.7 GB, L = 2 gives
+7.89x at 27.1 GB, L = 3 gives 21.19x at 33.0 GB. Larger segments cost more time AND more memory here.
+
+**The ratio does not grow with run length.** Scanned N = 5 to 625: 4.28, 4.47, 4.50, 4.51, 4.54, 4.57,
+4.59, 4.62, 4.63. Flat to within 8 % over a 125x range, which rules out memory traffic, checkpoint
+granularity and any single expensive operation (the component profile measures 1.0-2.2x for every part
+of a step).
+
+### The open question: 4.65x against a 4x target
+
+The target comes from decision I5(a), set at M2.4 on a different machine before this build existed, and
+this is a 16 % miss. Options:
+
+| option | cost | what it buys |
+|---|---|---|
+| a. Accept 4.65x, record it with the target's provenance | none | an honest number; nothing downstream is blocked |
+| b. Chase the last 16 % | days | `top_k` is half the forward step (S18.2); cutting it lifts BOTH the forward and the ratio |
+| c. Re-derive the 4x target from what M8's optimiser actually needs | hours of thinking | a target with a reason rather than an inherited number |
+
+**Recommend a now, b later.** The forward has 14x of headroom, so nothing is waiting on this.
+
+### Still needing hardware
+
+Full-resolution 3D V14 (`--full --v14`) was not run. It is the one remaining gate item that needs a GPU.
 
 ---
 
@@ -367,3 +395,23 @@ against the 40 GB budget. Band occupancy at the worst step rose from 36,200 to 4
 both give 14.5 ms per step. Band occupancy is 2.3 % of cells, so 97 % of the work is spent ranking cells
 that will not be used. Fixing it means a selection that is static-shaped without a full ranking; nothing
 is proposed yet, and it should be re-profiled on the GPU first, where `top_k` behaves differently.
+
+---
+
+## S18.3 — A single timing call is not a measurement
+
+**Status:** fixed; recorded because it produced a wrong result that was reported as a gate failure.
+**Classification:** D.
+
+The same N = 625, L = 1 gradient measured **78.25 s** in one run and **18.78 s** in another, on the same
+device with the same capacity and the same code: a 4x difference in a computation that did not change.
+`gradient_run` timed a single call after one warm-up, so it recorded whatever the device allocator was
+doing at that instant -- the 78 s reading was the first large-stack gradient on a fresh device, the
+18.78 s one came after smaller runs had grown its pools.
+
+That figure was reported as an 18x adjoint ratio and a failed gate item. It was neither. The true ratio
+is 4.65x.
+
+Fixed: the gradient is timed as the **median of three warm calls**, and the spread is printed beside it
+(measured 0.01 s at N = 625, so the number is now stable). Lesson worth keeping: a benchmark that
+reports one number from one call cannot distinguish a result from an allocator state.
