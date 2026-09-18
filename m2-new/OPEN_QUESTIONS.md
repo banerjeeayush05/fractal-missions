@@ -17,33 +17,54 @@ decision — live in the docstring of the module they concern, not here.
 
 ---
 
-## S20.2 — V6 requires order >= 4 of WENO5, and the full product path gives about 2
+## S20.2 — V6 requires order >= 4 of WENO5, and two separate things stop it
 
 **Status:** open, raised 2026-09-17 when WENO5 became the default. **Classification:** A (the
-requirement is probably the thing that is wrong). **Class:** A under `WORKING_AGREEMENT.md` §2 --
-it adjusts a stated requirement, so it is announced, not acted on.
+requirement is one of the things that is wrong, and the measurement convention is the other).
+**Class:** A under `WORKING_AGREEMENT.md` §2 — it adjusts a stated requirement, so it is announced,
+not acted on.
 
 The registry's V6 row reads `godunov >= 0.9; weno5 >= 4`. The Godunov half is measured and passes.
-The WENO5 half cannot pass on the FULL PRODUCT PATH, and not because the Hamiltonian is wrong.
+The WENO5 half fails, and the measurement shows two distinct reasons rather than one.
 
-Finding J2, from the original tree, is the reason: the velocity extension gathers rates to the band
-by normalised multilinear interpolation, which is **second order**. A fifth-order Hamiltonian
-downstream of a second-order gather gives a second-order path -- the measurement is about 2.1. The
-order of a composition is the order of its weakest link, and V6 as written measures the composition
-while its tolerance describes one link.
+Measured 2026-09-18, full product path, four levels at constant CFL:
 
-Three ways this could be settled, for the owner:
+| dx (nm) | L¹ error (nm) | L¹ order | L∞ order |
+|---|---|---|---|
+| 8 | 0.06996 | — | — |
+| 4 | 0.01546 | 2.178 | 2.017 |
+| 2 | 0.003716 | 2.057 | 1.856 |
+| 1 | 0.001321 | 1.492 | 0.448 |
+
+**Reason one: the coupled path is second order, and that is by design.** The 8→4 and 4→2 pairs read
+2.18 and 2.06. Finding J2 says why: the velocity extension gathers rates to the band by normalised
+multilinear interpolation, which is second order. A fifth-order Hamiltonian downstream of a
+second-order gather gives a second-order path. The order of a composition is the order of its
+weakest link, and V6 as written measures the composition while its tolerance describes one link.
+The Hamiltonian's own order is verified separately at 5.13.
+
+**Reason two: the finest pair is measuring the ruler, not the scheme.** At dx = 1 nm the error is
+0.0013 nm — about a picometre, far below anything the sub-cell contour used by `radii_along_rays`
+can resolve. The orders collapse there (1.49 and 0.45) because the numerator is extraction noise.
+This never showed up under Godunov, whose errors at the same levels are two orders of magnitude
+larger, so the floor is never reached.
+
+That interacts with **S13.2**, settled 2026-09-17: "observed order is read from the finest
+refinement pair." The convention is right in the asymptotic regime and wrong once a scheme is
+accurate enough to hit the measurement floor, which is exactly what a better scheme does. Whatever
+is decided about the tolerance, the convention needs a floor guard — for example, ignore any pair
+whose finer error is within 10x of the extraction's own resolution, and fail if no pair survives.
 
 | option | what it says | consequence |
 |---|---|---|
-| **a.** Require `weno5 >= 1.9` on the product path, and check the fifth order separately on the bare Hamiltonian | The requirement was measuring the wrong thing | V6 passes; one new small check covers the reconstruction itself |
+| **a.** Require `weno5 >= 1.9` on the product path, read from the finest pair ABOVE the extraction floor, and check fifth order separately on the bare Hamiltonian | The requirement was measuring the wrong thing, and so was the convention | V6 passes on 2.06; one new small check covers the reconstruction itself |
 | **b.** Keep `>= 4` and raise the extension to fifth order | The gather is the defect | Real work in `band.py`, and the gather is in the differentiated path, so V14 must be re-run |
-| **c.** Keep `>= 4` and record the failure permanently | The product does not meet its own stated order | A standing red check |
+| **c.** Keep `>= 4` and record the failure permanently | The product does not meet its own stated order | A standing red check, and the number it reports is noise |
 
-**Recommendation: a.** The second-order gather is a deliberate design choice (it is what makes the
-closest-point projection differentiable and cheap), not an accident, and no M2 deliverable depends
+**Recommendation: a.** The second-order gather is a deliberate design choice — it is what makes the
+closest-point projection differentiable and cheap — not an accident, and no M2 deliverable depends
 on fifth-order convergence of the coupled path. Option b is the only one that would change the
-product, and nothing has asked for it.
+product, and nothing has asked for it. The floor guard is needed under any of the three.
 
 The tolerance is UNCHANGED until the owner decides. The WENO5 case is `xfail(strict=True)`, so the
 ledger records it as not passing and a fix cannot land unnoticed.
