@@ -147,7 +147,7 @@ def size_capacity(run: GateRun, n_steps: int | None = None, margin: float = 1.25
 
 
 def gradient_run(run: GateRun, n_steps: int | None = None, capacity: int | None = None,
-                 segment: int | None = None) -> dict:
+                 segment: int | None = None, repeats: int = 3) -> dict:
     """The checkpointed gradient on S03: warm timings, adjoint ratio and measured peak memory.
 
     This is the run the M2.4 gate is about, and it does not fit on a laptop: the model says about
@@ -170,14 +170,30 @@ def gradient_run(run: GateRun, n_steps: int | None = None, capacity: int | None 
     objective = jax.jit(lambda p: solid_volume(evolve(run.phi0, p, field, plan)[0], grid))
     gradient = jax.jit(jax.grad(objective))
 
-    float(objective(run.params))                      # compile
-    start = time.perf_counter(); float(objective(run.params)); forward = time.perf_counter() - start
-    float(gradient(run.params)["p"])                  # compile
-    start = time.perf_counter(); float(gradient(run.params)["p"]); adjoint = time.perf_counter() - start
+    def timed(fn, repeats: int) -> tuple[float, float]:
+        """Median and spread of `repeats` warm calls.
+
+        A SINGLE call is not a measurement. The same N = 625 gradient timed 78.25 s when it was the
+        first large run on a fresh device and 18.78 s after smaller runs had already grown the
+        allocator's pools -- a 4x difference in a computation that did not change. The median of
+        several calls is stable; the spread is reported so a noisy one cannot pass unnoticed.
+        """
+        fn()                                            # compile and first allocation
+        samples = []
+        for _ in range(repeats):
+            start = time.perf_counter()
+            fn()
+            samples.append(time.perf_counter() - start)
+        samples.sort()
+        return samples[len(samples) // 2], samples[-1] - samples[0]
+
+    forward, forward_spread = timed(lambda: float(objective(run.params)), repeats)
+    adjoint, adjoint_spread = timed(lambda: float(gradient(run.params)["p"]), repeats)
 
     return {"steps": steps, "segment": length, "capacity": k,
-            "forward_s": forward,
-            "adjoint_s": adjoint, "adjoint_ratio": adjoint / forward,
+            "forward_s": forward, "forward_spread_s": forward_spread,
+            "adjoint_s": adjoint, "adjoint_spread_s": adjoint_spread,
+            "adjoint_ratio": adjoint / forward, "repeats": repeats,
             "peak_gb_measured": device_peak_gb()}
 
 
@@ -355,7 +371,8 @@ def main(argv: list[str] | None = None) -> int:
         segments = [int(v) for v in args.segments.split(",")] if args.segments else [None]
         print()
         print("GRADIENT (checkpointed)          GATE: ratio <= 4x, peak < 40 GB")
-        print("   L   warm forward   warm gradient   ratio    peak memory   modelled peak")
+        print(f"   (median of 3 warm calls; spread shown, because a single call is not a measurement)")
+        print("   L   warm forward   warm gradient   ratio    peak memory   modelled peak   spread")
         for segment in segments:
             gradient = gradient_run(run, n_steps=args.steps, capacity=sizing["capacity"],
                                     segment=segment)
@@ -367,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {gradient['segment']:2d}   {gradient['forward_s']:9.2f} s   "
                   f"{gradient['adjoint_s']:10.2f} s   {gradient['adjoint_ratio']:6.2f}x   "
                   + (f"{measured:8.1f} GB" if measured is not None else "       n/a")
-                  + f"   {modelled:9.1f} GB")
+                  + f"   {modelled:9.1f} GB   {gradient['adjoint_spread_s']:5.2f} s")
 
     if args.profile:
         print()
