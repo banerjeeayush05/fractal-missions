@@ -193,37 +193,6 @@ cannot land unnoticed. Tolerances are unchanged.
 
 ---
 
-## S13.2 — Which refinement pairs define "observed order"
-
-**Status:** open, minor. **Classification:** D.
-
-PRD §8.2 requires an observed order but does not say how it is computed from several refinement
-levels. The tests take the **finest pair** (the asymptotic regime) and record every pair.
-
-This decides V7:
-
-| refinement pair | observed order |
-|---|---|
-| 1st (coarsest) | 1.80 |
-| 2nd | 1.91 |
-| 3rd (finest) | **1.97** |
-| least-squares fit, all four levels | 1.895 |
-
-The requirement is ≥ 1.9. The finest pair passes; a least-squares fit over all levels misses by 0.005.
-The coarsest pair is pre-asymptotic, and the finest-pair convention is standard practice, but because
-it is the difference between pass and fail it is stated here rather than left implicit.
-
-V5 and V6 pass under either convention:
-
-| check | L1 orders | L∞ orders | requirement |
-|---|---|---|---|
-| V5 (manufactured solution) | 1.07, 1.00, 0.99 | 1.80, 1.25, 1.01 | scheme order, 1 |
-| V6 (spatial, full product path) | 0.97, 0.99, 1.02 | 0.94, 0.95, 0.99 | ≥ 0.9 |
-
----
-
----
-
 ---
 
 ## S14.3 — WENO5 cost
@@ -239,6 +208,8 @@ V5 and V6 pass under either convention:
 | V16 | 3.7e-15 | 8.6e-11, against 1e-10 |
 
 V16 under WENO5 passes with little margin. Godunov remains the default.
+
+---
 
 ---
 
@@ -288,6 +259,8 @@ Full-resolution 3D V14 (`--full --v14`) was not run. It is the one remaining gat
 
 ---
 
+---
+
 ## S17.1 — w_mat sensitivity: small for the marker's own rate, large for the film's
 
 **Status:** reported, and the resolution question DECIDED 2026-09-17 (dx = 2 nm, w_mat 2 cells). **Classification:** C — owner should read before M2.8
@@ -320,6 +293,8 @@ fitted under.
 
 ---
 
+---
+
 ## S18.2 — `top_k` is half the step time on CPU
 
 **Status:** recorded, optimisation candidate. **Classification:** D. Profile on a 256x256 grid:
@@ -337,6 +312,8 @@ fitted under.
 both give 14.5 ms per step. Band occupancy is 2.3 % of cells, so 97 % of the work is spent ranking cells
 that will not be used. Fixing it means a selection that is static-shaped without a full ranking; nothing
 is proposed yet, and it should be re-profiled on the GPU first, where `top_k` behaves differently.
+
+---
 
 ---
 

@@ -7,7 +7,8 @@ decreases.' An order that is right by eye and 0.6 by measurement is a bug."
 recorded. This matters for V7: the pairs read 1.80, 1.91, 1.97, and a least-squares fit across all
 four levels reads 1.895 -- just under the 1.9 requirement. The coarsest pair is pre-asymptotic. The
 finest-pair convention is the standard one and was not chosen for V7, but it is the difference between
-pass and fail here, so it is stated rather than left implicit. Class D, recorded as S13.2.
+pass and fail here, so it was stated rather than left implicit. **Owner accepted it 2026-09-17**
+(DECISIONS.md, S13.2).
 """
 
 import jax.numpy as jnp

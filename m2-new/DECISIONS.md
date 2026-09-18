@@ -10,6 +10,22 @@ commit `b5b320c`, e.g. `git show b5b320c:m2/OPEN_QUESTIONS.md`.
 
 ---
 
+## 2026-09-17 — Observed order is read from the finest refinement pair (S13.2)
+
+> Keep the finest pair
+
+An observed order is an ASYMPTOTIC claim, so it is read where the asymptotics hold: from the two finest
+refinement levels. Every pair-wise order is still printed in the record, so a reader sees the trend
+rather than one number.
+
+This decides V7 (temporal order, TVD-RK2, requirement >= 1.9). The pair-wise orders are 1.80, 1.91 and
+**1.97**; a least-squares fit through all four levels reads 1.895 and would miss. The coarse levels
+measure a regime the scheme is not claimed to be in, which is why they drag a fit down. Flagged when it
+was chosen, because picking the convention that passes after seeing the numbers is the thing this
+project's rules exist to prevent.
+
+`tests/test_order.py` already implements and documents this; no code change.
+
 ## 2026-09-17 — Five items settled in one pass (S12.3, S14.2, S17.5, S3.1, S4.1)
 
 > Skip S14.2, 1% is good for S12.3, keep 200 nm for S17.5, I don't care about the version name figure
