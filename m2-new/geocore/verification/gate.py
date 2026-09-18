@@ -311,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ratio-scan", action="store_true",
                         help="adjoint ratio against run length, to separate per-step cost from "
                              "memory traffic")
+    parser.add_argument("--lengths", type=str, default=None,
+                        help="comma-separated run lengths for --ratio-scan, e.g. 200,300,400,625")
     parser.add_argument("--steps", type=int, default=None, help="truncate the run (smoke test)")
     parser.add_argument("--segments", type=str, default=None,
                         help="comma-separated checkpoint segment lengths to compare, e.g. 1,2,4")
@@ -380,7 +382,9 @@ def main(argv: list[str] | None = None) -> int:
         print("ADJOINT RATIO vs RUN LENGTH (checkpointed L = 1; unchecked where it fits)")
         print(f"  {'N':>5s} {'forward':>10s} {'gradient':>11s} {'ratio':>8s} {'peak':>10s}"
               f"  {'unchecked ratio':>16s}")
-        for row in ratio_scan(run, capacity=sizing["capacity"]):
+        lengths = tuple(int(v) for v in args.lengths.split(",")) if args.lengths \
+            else (5, 25, 50, 100, 200)
+        for row in ratio_scan(run, lengths=lengths, capacity=sizing["capacity"]):
             peak = f"{row['peak_gb']:.1f} GB" if row["peak_gb"] is not None else "n/a"
             plain = row["unchecked_ratio"]
             plain = f"{plain:.2f}x" if isinstance(plain, float) else (plain or "too big")
