@@ -110,6 +110,57 @@ it is the one change that would turn a genuinely wrong gradient green.
 
 ---
 
+## S20.8 — The collimated limit of the law moved when the scheme got sharper
+
+**Status:** open, raised 2026-09-19 by the first gate-tier run under the WENO5 default.
+**Classification:** D (it concerns V3, which is ON HOLD). **Class:** A under `WORKING_AGREEMENT.md`.
+
+`tests/test_aperture.py::test_the_aperture_is_reproduced_near_p_equals_one` asks whether the trench
+reproduces the mask opening at p = 1.05. That p was not chosen from theory; it was measured under
+Godunov as the place the sidewall-angle error is smallest. Under WENO5 it is no longer that place.
+
+Angle error over 100 nm of travel:
+
+| p | 1.00 | 1.05 | 1.25 | 2.00 |
+|---|---|---|---|---|
+| godunov | 0.195 | **0.110** | 1.177 | 4.717 |
+| weno5 | 1.454 | 1.094 | **0.032** | 3.550 |
+
+Floor travel and CD both improved and are effectively scheme-independent: 100.00 nm of travel at
+every p under WENO5 against Godunov's 99.99, and 99.76 at p = 2; CD 100.00 nm throughout. So the
+solve is better everywhere and only the LOCATION of the minimum moved, from about 1.05 to about 1.25.
+
+**Why that is the expected direction.** The angle error is a competition between two effects: the
+law punishes tilt more as p grows (S18.1's feedback), and the scheme rounds the mask corner, which
+Godunov did far more of. Godunov's numerical diffusion was partly cancelling the tilt feedback near
+p = 1. Removing the diffusion moved the balance point. The number the test pinned was a property of
+the scheme as much as of the law.
+
+**What is NOT explained.** At p = 1 exactly the vertical descent speed `h_t = -v0 cos^(p-1)(theta)`
+is independent of tilt, so the mask shape should translate downward unchanged and a sharper scheme
+should give a SMALLER error. WENO5 gives 1.454 deg against Godunov's 0.195. That is backwards. The
+likely place to look is the sidewall fit window near the mask corner rather than the solver -- the
+window is `floor + 15 nm` to `FILM_TOP - 15 nm`, and a sharper corner changes what falls inside it --
+but this has not been confirmed, and it should be before any conclusion is drawn about the law.
+
+| option | what it does |
+|---|---|
+| **a.** Find out why p = 1 is worse under the sharper scheme first, then re-pin | Answers the question the test exists to ask. Half a day |
+| **b.** Re-pin the test at the measured WENO5 minimum, p = 1.25 | Records the new number, but bakes in the same kind of scheme-dependent conclusion this finding is about |
+| **c.** Assert only travel and CD, which are scheme-independent, and drop the angle claim | Keeps what is solid, loses the measurement V3 was going to be revisited against |
+
+**Recommendation: a.** The p = 1 anomaly is cheap to chase and it decides whether the other numbers
+mean anything. Nothing depends on it in the meantime: V3 is ON HOLD under S18.1 pending M3's
+non-local flux, and this test is the supporting measurement for that shelved decision.
+
+**Process note.** This never appeared in any local run because it is GATE tier, and both suites
+exclude it -- fast is `-m "not nightly and not gate"`, nightly is `-m "not gate"`. The WENO5
+re-verification ran both and `tests/test_gate_m2_4.py` explicitly, but never `-m gate` as a whole,
+so this test had not executed since the default changed. **Run the gate tier locally after any
+change to the solver**, even though two of its checks need a GPU; the rest do not.
+
+---
+
 ## S15.4 — M2.4 gate status: measured on an H100, one item short
 
 **Status:** the whole section needs re-measuring on the H100. Every number below was measured under

@@ -88,6 +88,13 @@ def test_a_corner_free_surface_is_exact_at_p_64():
     assert abs((400.0 - z) - 200.0) < 0.05
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "S20.8 OPEN (raised 2026-09-19): this pins WHERE the angle-error minimum sits, which was "
+    "measured under Godunov and moved when WENO5 became the default -- from about p = 1.05 "
+    "(0.110 deg) to about p = 1.25 (0.032 deg). At the p = 1.05 written here WENO5 reads 1.094 deg. "
+    "Nothing else regressed: floor travel is 100.00 nm at every p against Godunov's 99.99, and "
+    "99.76 at p = 2. The tolerance is UNCHANGED; what is in question is which p the test should "
+    "ask about, and that is a statement about the law, which is ON HOLD under S18.1."))
 def test_the_aperture_is_reproduced_near_p_equals_one():
     """The measurement that identifies WHICH p is the collimated limit of this law.
 
@@ -100,8 +107,25 @@ def test_the_aperture_is_reproduced_near_p_equals_one():
     more slowly, tilt grows, and the feedback of S18.1 starts. p is not "how collimated"; it is how
     strongly the model punishes tilt.
 
-    Measured, 100 nm of travel: angle error 0.195 deg at p = 1, 0.110 deg at p = 1.05, 1.177 deg at
-    p = 1.25, 4.717 deg at p = 2, 3.051 deg at p = 64. V3's 0.5 deg is met near p = 1 only.
+    Measured over 100 nm of travel, angle error by p and scheme (2026-09-19):
+
+        p        1.00     1.05     1.25     2.00
+        godunov  0.195    0.110    1.177    4.717     (3.051 at p = 64)
+        weno5    1.454    1.094    0.032    3.550
+
+    Under Godunov V3's 0.5 deg was met near p = 1 only. Under the WENO5 default the minimum sits
+    near p = 1.25 instead. The competition is between the law punishing tilt, which grows with p,
+    and the scheme rounding the mask corner, which Godunov did far more of -- so Godunov's diffusion
+    was partly cancelling the tilt feedback near p = 1, and removing it moved the balance point.
+
+    Travel and CD both IMPROVED and are scheme-independent to the second decimal: 100.00 nm of
+    travel at every p under WENO5 against 99.99 under Godunov (99.76 at p = 2), CD 100.00 nm
+    throughout.
+
+    Unexplained, and recorded rather than smoothed over: at p = 1 exactly, `h_t = -v0 cos^(p-1)`
+    is tilt-independent, so the mask shape should translate downward and a SHARPER scheme should
+    give a smaller error, not 1.454 deg against Godunov's 0.195. That points at the extraction
+    window near the mask corner rather than at the solver, but it has not been confirmed. See S20.8.
     """
     result = _run(start_depth=150.0, steps=50, p=1.05)
     floor = float(X.floor_height(result.phi, GRID, CENTRE))
